@@ -5,7 +5,7 @@
 
 This is simple dumper/programmer for Famicom cartridges.
 
-![Schematics](images/dumper.jpg)
+![Dumper](images/dumper.jpg)
 
 You can use it to:
 * Dump cartridges, so you can play copy of your cartridge on emulator
@@ -58,6 +58,6 @@ There are ultracheap chinese COOLBOY cartridges like "400 in 1" or "198 in 1". Y
 
 But you need to unsolder pins /OE and /WE and connect them to TCK and TDO pins on JTAG connector:
 
-![Schematics](images/coolboy.jpg)
+![COOLBOY](images/coolboy.jpg)
 
 Don't forget to solder pins back before using cartridge.
