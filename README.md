@@ -5,7 +5,7 @@
 
 This is simple dumper/programmer for Famicom cartridges.
 
-![Schematics](images/dumper.jpg)
+![Dumper](images/dumper.jpg)
 
 You can use it to:
 * Dump cartridges, so you can play copy of your cartridge on emulator
@@ -25,15 +25,16 @@ You need:
 * ATMEGA64
 * FT232RL
 * 60-pin edge socket
+* Printed circuit board, you can order one using files it "board" or "board2" folders.
+* Some capacitors
 * Maybe some leds
 
-That's all! 
+That's all!
 
 
 ## How to compile firmware
 
-All you need is [WinAVR](http://winavr.sourceforge.net/)
-Just type "make hex" in command line to compile firmware or bootloader.
+All you need is [WinAVR](http://winavr.sourceforge.net/). Just type "make hex" in command line to compile firmware or bootloader.
 
 
 ## How to build it
@@ -52,12 +53,12 @@ You can use command "**make program PROGRAMMER_PORT=COM10**" to program main fir
 That's all! It's ready to use. Now you need PC-side client to use it: https://github.com/ClusterM/famicom-dumper-client
 
 
-## How to rewrite COOLBOY cartridges.
+## How to rewrite COOLBOY cartridges
 
 There are ultracheap chinese COOLBOY cartridges like "400 in 1" or "198 in 1". You can buy them on eBay or Aliexpress. And yes, there is flash memory, so you can rewrite it.
 
 But you need to unsolder pins /OE and /WE and connect them to TCK and TDO pins on JTAG connector:
 
-![Schematics](images/coolboy.jpg)
+![COOLBOY](images/coolboy.jpg)
 
 Don't forget to solder pins back before using cartridge.
