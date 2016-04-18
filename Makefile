@@ -1,8 +1,8 @@
 #LFUSE          = E4
 #HFUSE          = DD
 MCU_PROGRAMMER = m64
-PROGRAMMER_TYPE = avr109 
-PROGRAMMER_PORT = com10
+PROGRAMMER_TYPE ?= avr109 
+PROGRAMMER_PORT ?= com10
 
 PRG            = famicom-dumper
 OBJ            = dumper.o usart.o comm.o jtag.o
@@ -152,6 +152,6 @@ program: hex
 reboot:
 	famicom-dumper bootloader
 
-reboot_program: reboot program
+update: reboot program
 
 build: hex

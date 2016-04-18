@@ -44,8 +44,8 @@ LFUSE          = E4
 HFUSE          = DC
 EFUSE          = FF
 MCU_PROGRAMMER = m64
-PROGRAMMER_TYPE = avrisp2
-PROGRAMMER_PORT = usb
+PROGRAMMER_TYPE ?= avrisp2
+PROGRAMMER_PORT ?= usb
 
 ## MCU = atmega162
 ## MCU = atmega169
