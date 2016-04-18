@@ -54,7 +54,7 @@ You can use command "**make program PROGRAMMER_PORT=COM10**" to program main fir
 That's all! It's ready to use. Now you need PC-side client to use it: https://github.com/ClusterM/famicom-dumper-client
 
 
-## How to rewrite COOLBOY cartridges.
+## How to rewrite COOLBOY cartridges
 
 There are ultracheap chinese COOLBOY cartridges like "400 in 1" or "198 in 1". You can buy them on eBay or Aliexpress. And yes, there is flash memory, so you can rewrite it.
 
