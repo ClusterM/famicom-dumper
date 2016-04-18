@@ -34,8 +34,7 @@ That's all!
 
 ## How to compile firmware
 
-All you need is [WinAVR](http://winavr.sourceforge.net/)
-Just type "make hex" in command line to compile firmware or bootloader.
+All you need is [WinAVR](http://winavr.sourceforge.net/). Just type "make hex" in command line to compile firmware or bootloader.
 
 
 ## How to build it
