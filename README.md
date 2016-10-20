@@ -50,7 +50,14 @@ Connect device to USB and PC will detect it as virtual serial port. First 8 seco
 
 You can use command "**make program PROGRAMMER_PORT=COM10**" to program main firmware. Replace *COM10* with port assigned to your dumper (you can use Windows device manager to see it).
 
-That's all! It's ready to use. Now you need PC-side client to use it: https://github.com/ClusterM/famicom-dumper-client
+Also it's recommended to reprogram FT232 chip using [FT_PROG util](http://www.ftdichip.com/Support/Utilities.htm#FT_PROG) to change device name to "Famicom Dumper/Programmer", so it can be detected automatically by software.
+
+That's all! You can use it now.
+
+
+## How to use it
+
+Now you need PC-side client to use it: https://github.com/ClusterM/famicom-dumper-client
 
 
 ## How to rewrite COOLBOY cartridges
