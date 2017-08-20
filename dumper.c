@@ -48,7 +48,7 @@
 #define CHR_WRITE_HI PORTF |= (1<<2)
 #define CHR_WRITE_LOW PORTF &= ~(1<<2)
 
-static void (*jump_to_bootloader)(void) = 0xF800;
+static void (*jump_to_bootloader)(void) = (void*)0xF800;
 
 ISR(USART0_RX_vect)
 {
@@ -169,6 +169,64 @@ static void read_chr_send(unsigned int address, unsigned int len)
 	LED_GREEN_OFF;
 }
 
+static uint16_t crc16_update(uint16_t crc, uint8_t a)
+{
+	int i;
+	crc ^= a;
+	for (i = 0; i < 8; ++i)
+	{
+		if (crc & 1)
+			crc = (crc >> 1) ^ 0xA001;
+		else
+			crc = (crc >> 1);
+	}
+	return crc;
+}
+
+static void read_prg_crc_send(unsigned int address, unsigned int len)
+{
+	LED_GREEN_ON;
+	uint16_t crc = 0;
+	read_prg_byte(address);
+	while (len > 0)
+	{
+		unsigned char l = address & 0xFF;
+		unsigned char h = address>>8;	
+		PORTA = l;
+		PORTC = h;
+		_delay_us(1);
+		crc = crc16_update(crc, PIND);
+		len--;
+		address++;
+	}
+	set_address(0);
+	PHI2_HI;
+	ROMSEL_HI;
+	comm_start(COMMAND_PRG_READ_RESULT, 2);
+	comm_send_byte(crc & 0xFF);
+	comm_send_byte((crc >> 8) & 0xFF);
+	LED_GREEN_OFF;
+}
+
+static void read_chr_crc_send(unsigned int address, unsigned int len)
+{
+	LED_GREEN_ON;
+	uint16_t crc = 0;
+	while (len > 0)
+	{
+		crc = crc16_update(crc, read_chr_byte(address));
+		len--;
+		address++;
+	}
+	set_address(0);
+	PHI2_HI;
+	ROMSEL_HI;
+	comm_start(COMMAND_CHR_READ_RESULT, 2);
+	comm_send_byte(crc & 0xFF);
+	comm_send_byte((crc >> 8) & 0xFF);
+	LED_GREEN_OFF;
+}
+
 static void read_coolboy_send(unsigned int address, unsigned int len)
 {
 	LED_GREEN_ON;
@@ -203,10 +261,11 @@ static void write_prg_byte(unsigned int address, uint8_t data)
 //	_delay_us(1);
 	
 	PHI2_HI;
-//	_delay_us(1);
+	//_delay_us(10);
 	set_romsel(address); // ROMSEL is low if need, PHI2 high	
 	
 	_delay_us(1); // WRITING
+	//_delay_ms(1); // WRITING
 	
 	// PHI2 low, ROMSEL high
 	PHI2_LOW;
@@ -233,11 +292,12 @@ static void write_chr_byte(unsigned int address, uint8_t data)
 	MODE_WRITE;
 	PORTD = data;	
 	set_address(address); // PHI2 low, ROMSEL always HIGH
-	//_delay_us(1);
+	//_delay_us(10);
 	
 	CHR_WRITE_LOW;
 		
-	//_delay_us(1); // WRITING
+	_delay_us(1); // WRITING
+	//_delay_ms(1); // WRITING
 	
 	CHR_WRITE_HI;
 	
@@ -694,7 +754,7 @@ static void reset_phi2()
 	LED_GREEN_ON;
 	PHI2_LOW;
 	ROMSEL_HI;
-	_delay_ms(1000);
+	_delay_ms(100);
 	PHI2_HI;
 	LED_RED_OFF;
 	LED_GREEN_OFF;
@@ -765,6 +825,12 @@ int main (void)
 					read_prg_send(address, length);
 					break;
 
+				case COMMAND_PRG_CRC_READ_REQUEST:
+					address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
+					length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
+					read_prg_crc_send(address, length);
+					break;
+
 				case COMMAND_PRG_WRITE_REQUEST:
 					address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
 					length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
@@ -832,6 +898,12 @@ int main (void)
 					address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
 					length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
 					read_chr_send(address, length);
+					break;
+
+				case COMMAND_CHR_CRC_READ_REQUEST:
+					address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
+					length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
+					read_chr_crc_send(address, length);
 					break;
 
 				case COMMAND_CHR_WRITE_REQUEST:
