@@ -10,7 +10,7 @@ This is simple dumper/programmer for Famicom cartridges.
 You can use it to:
 * Dump cartridges, so you can play copy of your cartridge on emulator
 * Read/write battery backed saves, so you can continue your saved game on emulator/console
-* Write spetial cartridges like [COOLGIRL](https://github.com/ClusterM/coolgirl-famicom-multicard)
+* Write special cartridges like [COOLGIRL](https://github.com/ClusterM/coolgirl-famicom-multicard)
 * Rewrite ultracheap chinese COOLBOY cartridges. Soldering required but it's very simple.
 * Test your cartridges
 * Some reverse engineering
