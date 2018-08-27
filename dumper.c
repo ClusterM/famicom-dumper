@@ -496,11 +496,14 @@ static int erase_coolgirl_sector()
 	uint8_t debug;
 	while (((debug = read_prg_byte(0x8000)) != 0xFF) && (timeout < 3000))
 	{
+		ROMSEL_HI;
 		//comm_start(0xFF, 1);
 		//comm_send_byte(debug);
 		_delay_ms(1);
 		timeout++;
-	}
+	}	
+	//comm_start(0xFF, 1);
+	//comm_send_byte(debug);
 	set_address(0);
 	PHI2_HI;
 	ROMSEL_HI;
@@ -642,7 +645,8 @@ static int write_coolgirl(unsigned int address, unsigned int len, uint8_t* data)
 		unsigned int address_base = a & 0xFFE0;
 		while (len > 0 && ((a & 0xFFE0) == address_base))
 		{
-			if (*d != 0xFF) count++;
+			if (*d != 0xFF)
+				count++;
 			a++;
 			len--;
 			d++;
@@ -650,7 +654,7 @@ static int write_coolgirl(unsigned int address, unsigned int len, uint8_t* data)
 
 		if (count)
 		{
-			//write_prg_flash_command(0x0000, 0xF0);
+			write_prg_flash_command(0x0000, 0xF0);
 			write_prg_flash_command(0x0AAA, 0xAA);
 			write_prg_flash_command(0x0555, 0x55);
 			write_prg_flash_command(0x0000, 0x25);
@@ -675,19 +679,23 @@ static int write_coolgirl(unsigned int address, unsigned int len, uint8_t* data)
 			while (timeout < 100000)
 			{
 				res = read_prg_byte((address-1) | 0x8000);
+				//comm_start(0xFF, 1);
+				//comm_send_byte(res);
 				ROMSEL_HI;
 				if (res == last_res && last_res == *(data-1)) break;
 				last_res = res;
 				_delay_us(10);
 				timeout++;
 			}
+			//comm_start(0xFF, 1);
+			//comm_send_byte(res);
 			if (timeout >= 100000)
 			{
 				ok = 0;
 				break;
 			}
 		}
-		
+
 		address = a;
 		data = d;
 	}
