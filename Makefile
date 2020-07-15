@@ -2,7 +2,7 @@
 #HFUSE          = DD
 MCU_PROGRAMMER = m64
 PROGRAMMER_TYPE ?= avr109
-PROGRAMMER_PORT ?= com13
+PROGRAMMER_PORT ?= com28
 
 PRG            = famicom-dumper
 OBJ            = dumper.o usart.o comm.o jtag.o
@@ -150,7 +150,7 @@ program: hex
 	avrdude -V -p $(MCU_PROGRAMMER) -c $(PROGRAMMER_TYPE) -P $(PROGRAMMER_PORT) -U flash:w:$(PRG).hex
 
 reboot:
-	famicom-dumper bootloader --port $(PROGRAMMER_PORT)
+	./famicom-dumper.exe bootloader --port $(PROGRAMMER_PORT)
 
 update: reboot program
 

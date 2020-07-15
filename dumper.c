@@ -99,9 +99,12 @@ static void set_romsel(unsigned int address)
 
 static unsigned char read_prg_byte(unsigned int address)
 {
+	PHI2_LOW;
+  ROMSEL_HI;
 	MODE_READ;
 	PRG_READ;	
 	set_address(address);
+  _delay_us(1);
 	PHI2_HI;
 	set_romsel(address);
 	_delay_us(1);
@@ -258,31 +261,25 @@ static void write_prg_byte(unsigned int address, uint8_t data)
 	PRG_WRITE;
 	PORTD = data;
 	set_address(address); // PHI2 low, ROMSEL always HIGH
-//	_delay_us(1);
+	_delay_us(1);
 	
 	PHI2_HI;
-	//_delay_us(10);
 	set_romsel(address); // ROMSEL is low if need, PHI2 high	
 	
 	_delay_us(1); // WRITING
-	//_delay_ms(1); // WRITING
 	
 	// PHI2 low, ROMSEL high
 	PHI2_LOW;
-	_delay_us(1);
 	ROMSEL_HI;
 	
 	// Back to read mode
-//	_delay_us(1);
+	_delay_us(1);
 	PRG_READ;
 	MODE_READ;
 	set_address(0);
 
 	// Set phi2 to high state to keep cartridge unreseted
-//	_delay_us(1);
 	PHI2_HI;
-
-//	_delay_us(1);
 }
 
 static void write_chr_byte(unsigned int address, uint8_t data)
@@ -292,22 +289,15 @@ static void write_chr_byte(unsigned int address, uint8_t data)
 	MODE_WRITE;
 	PORTD = data;	
 	set_address(address); // PHI2 low, ROMSEL always HIGH
-	//_delay_us(10);
-	
 	CHR_WRITE_LOW;
 		
 	_delay_us(1); // WRITING
-	//_delay_ms(1); // WRITING
 	
 	CHR_WRITE_HI;
-	
-	//_delay_us(1);
 	
 	MODE_READ;
 	set_address(0);
 	PHI2_HI;
-	
-	//_delay_us(1);
 }
 
 static void write_prg(unsigned int address, unsigned int len, uint8_t* data)
@@ -320,7 +310,6 @@ static void write_prg(unsigned int address, unsigned int len, uint8_t* data)
 		len--;
 		data++;
 	}
-	//_delay_ms(1);
 	LED_RED_OFF;
 }
 
@@ -334,7 +323,6 @@ static void write_chr(unsigned int address, unsigned int len, uint8_t* data)
 		len--;
 		data++;
 	}
-	//_delay_ms(1);
 	LED_RED_OFF;
 }
 
