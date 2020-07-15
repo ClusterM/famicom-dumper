@@ -1,7 +1,7 @@
 /* Famicom Dumper/Programmer
  *
  * Copyright notice for this file:
- *  Copyright (C) 2016 Cluster
+ *  Copyright (C) 2020 Cluster
  *  http://clusterrr.com
  *  clusterrr@clusterrr.com
  *
@@ -29,7 +29,7 @@
 #include <inttypes.h>
 #include "usart.h"
 #include "comm.h"
-#include "jtag.h"
+#include "dumper.h"
 
 #define LED_RED_ON PORTB |= (1<<7)
 #define LED_RED_OFF PORTB &= ~(1<<7)
@@ -134,8 +134,8 @@ static unsigned char read_coolboy_byte(unsigned int address)
 	set_address(address);
 	PHI2_HI;
 	ROMSEL_LOW;
-	PORTB |= 1<<TDO_PIN;
-	PORTB &= ~(1<<TCK_PIN);
+	COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
+	COOLBOY_PORT &= ~(1<<COOLBOY_RD_PIN);
 	_delay_us(1);
 	return PIND;
 }
@@ -233,10 +233,10 @@ static void read_chr_crc_send(unsigned int address, unsigned int len)
 static void read_coolboy_send(unsigned int address, unsigned int len)
 {
 	LED_GREEN_ON;
-	PORTB |= 1<<TCK_PIN;
-	PORTB |= 1<<TDO_PIN;
-	DDRB |= 1<<TCK_PIN;
-	DDRB |= 1<<TDO_PIN;
+	COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
+	COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
+	COOLBOY_DDR |= 1<<COOLBOY_RD_PIN;
+	COOLBOY_DDR |= 1<<COOLBOY_WR_PIN;
 	comm_start(COMMAND_PRG_READ_RESULT, len);
 	while (len > 0)
 	{
@@ -246,11 +246,12 @@ static void read_coolboy_send(unsigned int address, unsigned int len)
 	}
 	set_address(0);
 	ROMSEL_HI;
-	PORTB |= 1<<TCK_PIN;
-	PORTB |= 1<<TDO_PIN;
+	COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
+	COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
 	
-	jtag_shutdown();
-	LED_GREEN_OFF;
+	COOLBOY_DDR &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
+	COOLBOY_PORT &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
+  LED_GREEN_OFF;
 }
 
 static void write_prg_byte(unsigned int address, uint8_t data)
@@ -333,8 +334,8 @@ static void write_prg_flash_command(unsigned int address, uint8_t data)
 
 static void write_coolboy_flash_command(unsigned int address, uint8_t data)
 {
-	PORTB |= 1<<TCK_PIN;
-	PORTB |= 1<<TDO_PIN;
+	COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
+	COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
 	ROMSEL_HI;
 	PRG_READ;	
 	set_address(address);
@@ -344,11 +345,11 @@ static void write_coolboy_flash_command(unsigned int address, uint8_t data)
 	ROMSEL_LOW;
 	_delay_us(1);
 	
-	PORTB &= ~(1<<TDO_PIN);
+	PORTB &= ~(1<<COOLBOY_WR_PIN);
 	
 	_delay_us(1);
 
-	PORTB |= 1<<TDO_PIN;
+	PORTB |= 1<<COOLBOY_WR_PIN;
 	set_address(0);
 	ROMSEL_HI;
 	MODE_READ;
@@ -437,10 +438,10 @@ static int erase_prg_flash()
 static int erase_coolboy_sector()
 {
 	LED_RED_ON;
-	PORTB |= 1<<TCK_PIN;
-	PORTB |= 1<<TDO_PIN;
-	DDRB |= 1<<TCK_PIN;
-	DDRB |= 1<<TDO_PIN;
+	COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
+	COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
+	COOLBOY_DDR |= 1<<COOLBOY_RD_PIN;
+	COOLBOY_DDR |= 1<<COOLBOY_WR_PIN;
 	ROMSEL_HI;
 
 	write_coolboy_flash_command(0x0000, 0xF0);
@@ -464,7 +465,8 @@ static int erase_coolboy_sector()
 	set_address(0);
 	ROMSEL_HI;
 
-	jtag_shutdown();
+	COOLBOY_DDR &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
+	COOLBOY_PORT &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
 	LED_RED_OFF;
 	return timeout < 3000;
 }
@@ -547,10 +549,10 @@ static int write_prg_flash(unsigned int address, unsigned int len, uint8_t* data
 static int write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
 {
 	LED_RED_ON;
-	PORTB |= 1<<TCK_PIN;
-	PORTB |= 1<<TDO_PIN;
-	DDRB |= 1<<TCK_PIN;
-	DDRB |= 1<<TDO_PIN;
+	COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
+	COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
+	COOLBOY_DDR |= 1<<COOLBOY_RD_PIN;
+	COOLBOY_DDR |= 1<<COOLBOY_WR_PIN;
 	ROMSEL_HI;
 	uint8_t ok = 1;
 	while (len > 0)
@@ -613,7 +615,8 @@ static int write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
 		data = d;
 	}
 	ROMSEL_HI;
-	jtag_shutdown();
+	COOLBOY_DDR &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
+	COOLBOY_PORT &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
 	LED_RED_OFF;
 	return ok;
 }
@@ -761,7 +764,8 @@ int main (void)
 	sei();
 	USART_init();
 	init_ports();
-	jtag_shutdown();
+	COOLBOY_DDR &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
+	COOLBOY_PORT &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
 
 	LED_RED_OFF;
 	LED_GREEN_OFF;	
@@ -938,25 +942,6 @@ int main (void)
 						comm_start(COMMAND_CHR_WRITE_DONE, 0);
 					break;
 					
-				case COMMAND_JTAG_SETUP:
-					jtag_setup();
-					comm_start(COMMAND_JTAG_RESULT, 1);
-					comm_send_byte(1);
-					break;
-					
-				case COMMAND_JTAG_SHUTDOWN:
-					jtag_shutdown();
-					comm_start(COMMAND_JTAG_RESULT, 1);
-					comm_send_byte(1);
-					break;
-				
-				case COMMAND_JTAG_EXECUTE:
-					address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
-					comm_start(COMMAND_JTAG_RESULT, 1);
-					LED_RED_ON;
-					comm_send_byte(jtag_execute(address, (uint8_t*) &recv_buffer[2]));
-					LED_RED_OFF;
-					break;
 				case COMMAND_BOOTLOADER:
 					cli();
 					MCUCSR = 0;

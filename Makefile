@@ -5,7 +5,7 @@ PROGRAMMER_TYPE ?= avr109
 PROGRAMMER_PORT ?= com28
 
 PRG            = famicom-dumper
-OBJ            = dumper.o usart.o comm.o jtag.o
+OBJ            = dumper.o usart.o comm.o
 #MCU_TARGET     = at90s2313
 #MCU_TARGET     = at90s2333
 #MCU_TARGET     = at90s4414
