@@ -14,7 +14,7 @@ static uint8_t comm_recv_error;
 
 volatile uint8_t comm_recv_command;
 volatile unsigned int comm_recv_length;
-volatile uint8_t recv_buffer[RECV_BUFFER];
+volatile uint8_t recv_buffer[RECV_BUFFER+8];
 volatile uint8_t comm_recv_done;
 
 static void comm_calc_send_crc(uint8_t inbyte)
@@ -105,7 +105,7 @@ void comm_proceed(uint8_t data)
 			comm_recv_length |= (uint16_t)data << 8;
 			break;
 		default:
-			if (l >= RECV_BUFFER)
+			if (l >= sizeof(recv_buffer))
 			{
 				comm_recv_pos = 0;
 				comm_recv_error = 1;

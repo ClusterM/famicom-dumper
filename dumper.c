@@ -60,18 +60,6 @@ ISR(USART0_RX_vect)
   }
 }
 
-static void phi2_init()
-{
-  int i = 0x80;
-  unsigned char h = PORTF |= (1<<0);
-  unsigned char l = PORTF &= ~(1<<0);
-  while(i != 0){
-    PORTA = l;
-    PORTA = h;
-    i--;
-  }
-}
-
 static void set_address(unsigned int address)
 {
   unsigned char l = address & 0xFF;
@@ -104,12 +92,11 @@ static unsigned char read_prg_byte(unsigned int address)
   MODE_READ;
   PRG_READ;  
   set_address(address);
-  //_delay_us(1);
-
   PHI2_HI;
   set_romsel(address); // set /ROMSEL high if need
   _delay_us(1);
   uint8_t result = PIND;
+  ROMSEL_HI;
   return result;
 }
 
@@ -119,11 +106,8 @@ static unsigned char read_chr_byte(unsigned int address)
   ROMSEL_HI;
   MODE_READ;
   set_address(address);
-  //_delay_us(1);
-
   CHR_READ_LOW;
   _delay_us(1);
-  
   uint8_t result = PIND;
   CHR_READ_HI;
   PHI2_HI;
@@ -132,6 +116,8 @@ static unsigned char read_chr_byte(unsigned int address)
 
 static unsigned char read_coolboy_byte(unsigned int address)
 {
+  PHI2_LOW;
+  ROMSEL_HI;
   MODE_READ;
   PRG_READ;  
   set_address(address);
@@ -140,7 +126,10 @@ static unsigned char read_coolboy_byte(unsigned int address)
   COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
   COOLBOY_PORT &= ~(1<<COOLBOY_RD_PIN);
   _delay_us(1);
-  return PIND;
+  uint8_t result = PIND;
+  ROMSEL_HI;
+  COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
+  return result;
 }
 
 static void read_prg_send(unsigned int address, unsigned int len)
@@ -154,8 +143,6 @@ static void read_prg_send(unsigned int address, unsigned int len)
     address++;
   }
   set_address(0);
-  PHI2_HI;
-  ROMSEL_HI;
   LED_GREEN_OFF;
 }
 
@@ -170,8 +157,6 @@ static void read_chr_send(unsigned int address, unsigned int len)
     address++;
   }
   set_address(0);
-  PHI2_HI;
-  ROMSEL_HI;
   LED_GREEN_OFF;
 }
 
@@ -193,21 +178,13 @@ static void read_prg_crc_send(unsigned int address, unsigned int len)
 {
   LED_GREEN_ON;
   uint16_t crc = 0;
-  read_prg_byte(address);
   while (len > 0)
   {
-    unsigned char l = address & 0xFF;
-    unsigned char h = address>>8;  
-    PORTA = l;
-    PORTC = h;
-    _delay_us(1);
-    crc = crc16_update(crc, PIND);
+    crc = crc16_update(crc, read_prg_byte(address));
     len--;
     address++;
   }
   set_address(0);
-  PHI2_HI;
-  ROMSEL_HI;
   comm_start(COMMAND_PRG_READ_RESULT, 2);
   comm_send_byte(crc & 0xFF);
   comm_send_byte((crc >> 8) & 0xFF);
@@ -225,8 +202,6 @@ static void read_chr_crc_send(unsigned int address, unsigned int len)
     address++;
   }
   set_address(0);
-  PHI2_HI;
-  ROMSEL_HI;
   comm_start(COMMAND_CHR_READ_RESULT, 2);
   comm_send_byte(crc & 0xFF);
   comm_send_byte((crc >> 8) & 0xFF);
@@ -337,6 +312,8 @@ static void write_prg_flash_command(unsigned int address, uint8_t data)
 
 static void write_coolboy_flash_command(unsigned int address, uint8_t data)
 {
+  COOLBOY_DDR |= 1<<COOLBOY_RD_PIN;
+  COOLBOY_DDR |= 1<<COOLBOY_WR_PIN;
   COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
   COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
   ROMSEL_HI;
@@ -346,135 +323,62 @@ static void write_coolboy_flash_command(unsigned int address, uint8_t data)
   PORTD = data;
   PHI2_HI;
   ROMSEL_LOW;
+  _delay_us(1);  
+  COOLBOY_PORT &= ~(1<<COOLBOY_WR_PIN);  
   _delay_us(1);
-  
-  PORTB &= ~(1<<COOLBOY_WR_PIN);
-  
-  _delay_us(1);
-
-  PORTB |= 1<<COOLBOY_WR_PIN;
+  COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
   set_address(0);
   ROMSEL_HI;
   MODE_READ;
 }
 
-static void write_chr_flash_command(unsigned int address, uint8_t data)
-{
-  write_chr_byte(address, data);
-}
-
-static int write_prg_flash_byte(unsigned int address, uint8_t data)
-{
-  write_prg_flash_command(0x0000, 0xF0);
-  write_prg_flash_command(0x0555, 0xAA);
-  write_prg_flash_command(0x02AA, 0x55);
-  write_prg_flash_command(0x0555, 0xA0);
-  
-  write_prg_flash_command(address, data);
-  _delay_us(50);
-
-  int timeout = 0;
-  uint8_t res, last_res = 0;
-  while (timeout < 200)
-  {
-    res = read_prg_byte(address | 0x8000);
-    ROMSEL_HI;
-    if (res == last_res && last_res == data) break;
-    last_res = res;
-     _delay_us(50);
-    timeout++;
-  }
-  //PHI2_LOW;
-  ROMSEL_HI;
-  set_address(0);
-  
-  return timeout < 10;
-}
-
-
-static int write_chr_flash_byte(unsigned int address, uint8_t data)
-{
-  write_chr_flash_command(0x0000, 0xF0);
-  write_chr_flash_command(0x0555, 0xAA);
-  write_chr_flash_command(0x02AA, 0x55);
-  write_chr_flash_command(0x0555, 0xA0);
-  write_chr_flash_command(address, data);
-
-  int timeout = 0;
-  while (read_chr_byte(address | 0x8000) != data && timeout < 10)
-  {
-    _delay_us(100);
-    timeout++;
-  }
-  set_address(0);
-  PHI2_LOW;
-  ROMSEL_HI;
-  
-  return timeout < 10;
-}
-
-static int erase_prg_flash()
+static void erase_coolboy_sector()
 {
   LED_RED_ON;
-  write_prg_flash_command(0x0000, 0xF0);
-  write_prg_flash_command(0x0AAA, 0xAA);
-  write_prg_flash_command(0x0555, 0x55);
-  write_prg_flash_command(0x0AAA, 0x80);
-  write_prg_flash_command(0x0AAA, 0xAA);
-  write_prg_flash_command(0x0555, 0x55);
-  write_prg_flash_command(0x0AAA, 0x10);
-  
-  int timeout = 0;
-  while ((read_prg_byte(0x8000) != 0xFF) && (timeout < 300000))
-  {
-    _delay_ms(1);
-    timeout++;
-  }
-  set_address(0);
-  PHI2_HI;
-  ROMSEL_HI;
-
-  LED_RED_OFF;
-  return timeout < 300000;
-}
-
-static int erase_coolboy_sector()
-{
-  LED_RED_ON;
-  COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
-  COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
-  COOLBOY_DDR |= 1<<COOLBOY_RD_PIN;
-  COOLBOY_DDR |= 1<<COOLBOY_WR_PIN;
-  ROMSEL_HI;
-
   write_coolboy_flash_command(0x0000, 0xF0);
   write_coolboy_flash_command(0x0AAA, 0xAA);
   write_coolboy_flash_command(0x0555, 0x55);
   write_coolboy_flash_command(0x0AAA, 0x80);
   write_coolboy_flash_command(0x0AAA, 0xAA);
   write_coolboy_flash_command(0x0555, 0x55);
-  write_coolboy_flash_command(0x0000, 0x30);  
+  write_coolboy_flash_command(0x0000, 0x30);
   
-  int timeout = 0;
-  uint8_t debug;
-  while (((debug = read_coolboy_byte(0x8000)) != 0xFF) && (timeout < 3000))
+  long int timeout = 0;
+  uint8_t res;
+  int16_t last_res = -1;
+  while (1)
   {
-    //comm_start(0xFF, 1);
-    //comm_send_byte(debug);
-    _delay_ms(1);
     timeout++;
+    if (timeout >= 1000000)
+    {
+      // timeout
+      comm_start(COMMAND_FLASH_ERASE_TIMEOUT, 0);
+      break;
+    }
+    res = read_coolboy_byte(0x8000);
+    if ((last_res == -1) || ((res ^ (last_res & 0xFF)) & ((1 << 6) | (1 << 2))))
+    {
+      // in progress
+      last_res = res;
+      continue;
+    }
+    // done
+    if (res == 0xFF)
+    {
+       // ok
+       comm_start(COMMAND_PRG_WRITE_DONE, 0);
+       break;
+    } else {
+       // error
+       comm_start(COMMAND_FLASH_ERASE_ERROR, 1);
+       comm_send_byte(res);
+       break;
+    }
   }
-  
-  set_address(0);
-  ROMSEL_HI;
-
-  COOLBOY_DDR &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
-  COOLBOY_PORT &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
   LED_RED_OFF;
-  return timeout < 3000;
 }
 
-static int erase_coolgirl_sector()
+static void erase_flash_sector()
 {
   LED_RED_ON;
   write_prg_flash_command(0x0000, 0xF0);
@@ -485,90 +389,54 @@ static int erase_coolgirl_sector()
   write_prg_flash_command(0x0555, 0x55);
   write_prg_flash_command(0x0000, 0x30);
   
-  int timeout = 0;
-  uint8_t debug;
-  while (((debug = read_prg_byte(0x8000)) != 0xFF) && (timeout < 3000))
+  long int timeout = 0;
+  uint8_t res;
+  int16_t last_res = -1;
+  while (1)
   {
-    ROMSEL_HI;
-    //comm_start(0xFF, 1);
-    //comm_send_byte(debug);
-    _delay_ms(1);
     timeout++;
-  }  
-  //comm_start(0xFF, 1);
-  //comm_send_byte(debug);
-  set_address(0);
-  PHI2_HI;
-  ROMSEL_HI;
-
-  LED_RED_OFF;
-  return timeout < 3000;
-}
-
-static int erase_chr_flash()
-{
-  LED_RED_ON;
-  write_chr_flash_command(0x0000, 0xF0);
-  write_chr_flash_command(0x0555, 0xAA);
-  write_chr_flash_command(0x02AA, 0x55);
-  write_chr_flash_command(0x0555, 0x80);
-  write_chr_flash_command(0x0555, 0xAA);
-  write_chr_flash_command(0x02AA, 0x55);
-  write_chr_flash_command(0x0555, 0x10);
-  
-  int timeout = 0;
-  while ((read_chr_byte(0) != 0xFF) && (timeout < 10000))
-  {
-    _delay_ms(1);
-    timeout++;
-  }
-  set_address(0);
-  PHI2_HI;
-  ROMSEL_HI;
-
-  LED_RED_OFF;
-  return timeout < 10000;
-}
-
-static int write_prg_flash(unsigned int address, unsigned int len, uint8_t* data)
-{
-  LED_RED_ON;
-  int ok = 1;
-  while (len > 0)
-  {
-    if (!write_prg_flash_byte(address, *data))
+    if (timeout >= 1000000)
     {
-      ok = 0;
+      // timeout
+      comm_start(COMMAND_FLASH_ERASE_TIMEOUT, 0);
       break;
     }
-    address++;
-    len--;
-    data++;
+    res = read_prg_byte(0x8000);
+    if ((last_res == -1) || ((res != (last_res & 0xFF))))
+    {
+      // in progress
+      last_res = res;
+      continue;
+    }
+    // done
+    if (res == 0xFF)
+    {
+       // ok
+       comm_start(COMMAND_PRG_WRITE_DONE, 0);
+       break;
+    } else {
+       // error
+       comm_start(COMMAND_FLASH_ERASE_ERROR, 1);
+       comm_send_byte(res);
+       break;
+    }
   }
   LED_RED_OFF;
-  return ok;
 }
 
-static int write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
+static void write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
 {
   LED_RED_ON;
-  COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
-  COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
-  COOLBOY_DDR |= 1<<COOLBOY_RD_PIN;
-  COOLBOY_DDR |= 1<<COOLBOY_WR_PIN;
-  ROMSEL_HI;
-  uint8_t ok = 1;
   while (len > 0)
   {
-    
-    //uint8_t count = len > 16 ? 16 : len;
     uint8_t count = 0;
     uint8_t* d = data;
     unsigned int a = address;
     unsigned int address_base = a & 0xFFE0;
-    while (len > 0 && ((a & 0xFFE0) == address_base))
+    while ((len > 0) && ((a & 0xFFE0) == address_base))
     {
-      if (*d != 0xFF) count++;
+      if (*d != 0xFF)
+        count++;
       a++;
       len--;
       d++;
@@ -576,7 +444,7 @@ static int write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
 
     if (count)
     {
-      //write_prg_flash_command(0x0000, 0xF0);
+      write_coolboy_flash_command(0x0000, 0xF0);
       write_coolboy_flash_command(0x0AAA, 0xAA);
       write_coolboy_flash_command(0x0555, 0x55);
       write_coolboy_flash_command(0x0000, 0x25);
@@ -594,50 +462,59 @@ static int write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
       }
     
       write_coolboy_flash_command(0x0000, 0x29);
-      _delay_us(10);
 
       long int timeout = 0;
-      uint8_t res, last_res = 0;
-      while (timeout < 100000)
+      uint8_t res;
+      int16_t last_res = -1;
+      while (1)
       {
-        res = read_coolboy_byte((address-1) | 0x8000);
-        ROMSEL_HI;
-        if (res == last_res && last_res == *(data-1)) break;
-        last_res = res;
-        _delay_us(10);
         timeout++;
-      }
-      if (timeout >= 100000)
-      {
-        ok = 0;
-        break;
+        if (timeout >= 100000)
+        {
+          // timeout
+          comm_start(COMMAND_FLASH_WRITE_TIMEOUT, 0);
+          LED_RED_OFF;
+          return;
+        }
+        res = read_coolboy_byte((address-1) | 0x8000);
+        if ((last_res == -1) || ((res != (last_res & 0xFF))))
+        {
+          // in progress
+          last_res = res;
+          continue;
+        }
+        // done
+        if (res == *(data-1))
+        {
+           // ok
+           break;
+        } else {
+           // error
+           comm_start(COMMAND_FLASH_WRITE_ERROR, 1);
+           comm_send_byte(res);
+           LED_RED_OFF;
+           return;
+        }
       }
     }
-    
+
     address = a;
     data = d;
   }
-  ROMSEL_HI;
-  COOLBOY_DDR &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
-  COOLBOY_PORT &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
+  comm_start(COMMAND_PRG_WRITE_DONE, 0);
   LED_RED_OFF;
-  return ok;
 }
 
-static int write_coolgirl(unsigned int address, unsigned int len, uint8_t* data)
+static void write_flash(unsigned int address, unsigned int len, uint8_t* data)
 {
   LED_RED_ON;
-  ROMSEL_HI;
-  uint8_t ok = 1;
   while (len > 0)
   {
-    
-    //uint8_t count = len > 16 ? 16 : len;
     uint8_t count = 0;
     uint8_t* d = data;
     unsigned int a = address;
     unsigned int address_base = a & 0xFFE0;
-    while (len > 0 && ((a & 0xFFE0) == address_base))
+    while ((len > 0) && ((a & 0xFFE0) == address_base))
     {
       if (*d != 0xFF)
         count++;
@@ -666,56 +543,47 @@ static int write_coolgirl(unsigned int address, unsigned int len, uint8_t* data)
       }
     
       write_prg_flash_command(0x0000, 0x29);
-      _delay_us(10);
 
       long int timeout = 0;
-      uint8_t res, last_res = 0;
-      while (timeout < 100000)
+      uint8_t res;
+      int16_t last_res = -1;
+      while (1)
       {
-        res = read_prg_byte((address-1) | 0x8000);
-        //comm_start(0xFF, 1);
-        //comm_send_byte(res);
-        ROMSEL_HI;
-        if (res == last_res && last_res == *(data-1)) break;
-        last_res = res;
-        _delay_us(10);
         timeout++;
-      }
-      //comm_start(0xFF, 1);
-      //comm_send_byte(res);
-      if (timeout >= 100000)
-      {
-        ok = 0;
-        break;
+        if (timeout >= 100000)
+        {
+          // timeout
+          comm_start(COMMAND_FLASH_WRITE_TIMEOUT, 0);
+          LED_RED_OFF;
+          return;
+        }
+        res = read_prg_byte((address-1) | 0x8000);
+        if ((last_res == -1) || ((res != (last_res & 0xFF))))
+        {
+          // in progress
+          last_res = res;
+          continue;
+        }
+        // done
+        if (res == *(data-1))
+        {
+           // ok
+           break;
+        } else {
+           // error
+           comm_start(COMMAND_FLASH_WRITE_ERROR, 1);
+           comm_send_byte(res);
+           LED_RED_OFF;
+           return;
+        }
       }
     }
 
     address = a;
     data = d;
   }
-  ROMSEL_HI;
+  comm_start(COMMAND_PRG_WRITE_DONE, 0);
   LED_RED_OFF;
-  return ok;
-}
-
-static int write_chr_flash(unsigned int address, unsigned int len, uint8_t* data)
-{
-  LED_RED_ON;
-  if (address >= 0x8000) address -= 0x8000;
-  int ok = 1;
-  while (len > 0)
-  {
-    if (!write_chr_flash_byte(address, *data))
-    {
-      ok = 0;
-      break;
-    }
-    address++;
-    len--;
-    data++;
-  }
-  LED_RED_OFF;
-  return ok;
 }
 
 void get_mirroring()
@@ -819,7 +687,12 @@ int main (void)
       switch (comm_recv_command)
       {
         case COMMAND_PRG_INIT:
-          comm_start(COMMAND_PRG_STARTED, 0);
+          comm_start(COMMAND_PRG_STARTED, 5);
+          comm_send_byte(PROTOCOL_VERSION);
+          comm_send_byte(SEND_BUFFER & 0xFF);
+          comm_send_byte((SEND_BUFFER >> 8) & 0xFF);
+          comm_send_byte(RECV_BUFFER & 0xFF);
+          comm_send_byte((RECV_BUFFER >> 8) & 0xFF);
           break;
           
         case COMMAND_PRG_READ_REQUEST:
@@ -847,50 +720,29 @@ int main (void)
           read_coolboy_send(address, length);
           break;
 
-        case COMMAND_PHI2_INIT:
-          phi2_init();
-          comm_start(COMMAND_PHI2_INIT_DONE, 0);
-          break;
-
         case COMMAND_RESET:
           reset_phi2();
           comm_start(COMMAND_RESET_ACK, 0);
           break;
           
-        case COMMAND_PRG_FLASH_ERASE_REQUEST:
-          if (erase_prg_flash())
-            comm_start(COMMAND_PRG_WRITE_DONE, 0);
-          break;
-
-        case COMMAND_PRG_FLASH_WRITE_REQUEST:
-          address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
-          length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
-          if (write_prg_flash(address, length, (uint8_t*)&recv_buffer[4]))
-            comm_start(COMMAND_PRG_WRITE_DONE, 0);
-          break;
-          
         case COMMAND_COOLBOY_ERASE_REQUEST:
-          if (erase_coolboy_sector())
-            comm_start(COMMAND_PRG_WRITE_DONE, 0);
+          erase_coolboy_sector();
           break;
 
         case COMMAND_COOLBOY_WRITE_REQUEST:
           address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
           length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
-          if (write_coolboy(address, length, (uint8_t*)&recv_buffer[4]))
-            comm_start(COMMAND_PRG_WRITE_DONE, 0);
+          write_coolboy(address, length, (uint8_t*)&recv_buffer[4]);
           break;
           
-        case COMMAND_COOLGIRL_ERASE_SECTOR_REQUEST:
-          if (erase_coolgirl_sector())
-            comm_start(COMMAND_PRG_WRITE_DONE, 0);
+        case COMMAND_FLASH_ERASE_SECTOR_REQUEST:
+          erase_flash_sector();
           break;
 
-        case COMMAND_COOLGIRL_WRITE_REQUEST:
+        case COMMAND_FLASH_WRITE_REQUEST:
           address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
           length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
-          if (write_coolgirl(address, length, (uint8_t*)&recv_buffer[4]))
-            comm_start(COMMAND_PRG_WRITE_DONE, 0);
+          write_flash(address, length, (uint8_t*)&recv_buffer[4]);
           break;
           
         case COMMAND_CHR_INIT:
@@ -918,31 +770,6 @@ int main (void)
 
         case COMMAND_MIRRORING_REQUEST:
           get_mirroring();
-          break;
-
-        /*
-        case COMMAND_EPROM_PREPARE:
-          write_eprom_prepare();
-          break;
-        
-        case COMMAND_CHR_EPROM_WRITE_REQUEST:
-          address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
-          length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
-          write_eprom(address, length, (uint8_t*)&recv_buffer[4]);
-          comm_start(COMMAND_CHR_WRITE_DONE, 0);
-          break;
-        */
-          
-        case COMMAND_CHR_FLASH_ERASE_REQUEST:
-          if (erase_chr_flash())
-            comm_start(COMMAND_CHR_WRITE_DONE, 0);
-          break;
-
-        case COMMAND_CHR_FLASH_WRITE_REQUEST:
-          address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
-          length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
-          if (write_chr_flash(address, length, (uint8_t*)&recv_buffer[4]))
-            comm_start(COMMAND_CHR_WRITE_DONE, 0);
           break;
           
         case COMMAND_BOOTLOADER:
