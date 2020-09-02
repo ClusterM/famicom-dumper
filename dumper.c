@@ -464,8 +464,7 @@ static void write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
       write_coolboy_flash_command(0x0000, 0x29);
 
       long int timeout = 0;
-      uint8_t res;
-      int16_t last_res = -1;
+      // waiting for result
       while (1)
       {
         timeout++;
@@ -476,24 +475,32 @@ static void write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
           LED_RED_OFF;
           return;
         }
-        res = read_coolboy_byte((address-1) | 0x8000);
-        if ((last_res == -1) || ((res != (last_res & 0xFF))))
+        uint8_t read_1 = read_coolboy_byte((address-1) | 0x8000);
+        uint8_t read_2 = read_coolboy_byte((address-1) | 0x8000);
+        uint8_t read_3 = read_coolboy_byte((address-1) | 0x8000);
+        if (((read_1 ^ read_2) & (1 << 6)) && ((read_2 ^ read_3) & (1 << 6)))
         {
-          // in progress
-          last_res = res;
-          continue;
-        }
-        // done
-        if (res == *(data-1))
-        {
-           // ok
-           break;
+          if (read_1 & (1 << 1))
+          {
+            comm_start(COMMAND_FLASH_WRITE_ERROR, 3);
+            comm_send_byte(read_1);
+            comm_send_byte(read_2);
+            comm_send_byte(read_3);
+            LED_RED_OFF;
+            return;
+          } else if (read_1 & (1 << 5)) {
+            comm_start(COMMAND_FLASH_WRITE_TIMEOUT, 3);
+            comm_send_byte(read_1);
+            comm_send_byte(read_2);
+            comm_send_byte(read_3);
+            LED_RED_OFF;
+            return;
+          }
         } else {
-           // error
-           comm_start(COMMAND_FLASH_WRITE_ERROR, 1);
-           comm_send_byte(res);
-           LED_RED_OFF;
-           return;
+          read_1 = read_coolboy_byte((address-1) | 0x8000);
+          read_2 = read_coolboy_byte((address-1) | 0x8000);
+          if (read_1 == read_2 && read_2 == *(data-1))
+            break; // ok
         }
       }
     }
@@ -545,8 +552,7 @@ static void write_flash(unsigned int address, unsigned int len, uint8_t* data)
       write_prg_flash_command(0x0000, 0x29);
 
       long int timeout = 0;
-      uint8_t res;
-      int16_t last_res = -1;
+      // waiting for result
       while (1)
       {
         timeout++;
@@ -557,24 +563,32 @@ static void write_flash(unsigned int address, unsigned int len, uint8_t* data)
           LED_RED_OFF;
           return;
         }
-        res = read_prg_byte((address-1) | 0x8000);
-        if ((last_res == -1) || ((res != (last_res & 0xFF))))
+        uint8_t read_1 = read_prg_byte((address-1) | 0x8000);
+        uint8_t read_2 = read_prg_byte((address-1) | 0x8000);
+        uint8_t read_3 = read_prg_byte((address-1) | 0x8000);
+        if (((read_1 ^ read_2) & (1 << 6)) && ((read_2 ^ read_3) & (1 << 6)))
         {
-          // in progress
-          last_res = res;
-          continue;
-        }
-        // done
-        if (res == *(data-1))
-        {
-           // ok
-           break;
+          if (read_1 & (1 << 1))
+          {
+            comm_start(COMMAND_FLASH_WRITE_ERROR, 3);
+            comm_send_byte(read_1);
+            comm_send_byte(read_2);
+            comm_send_byte(read_3);
+            LED_RED_OFF;
+            return;
+          } else if (read_1 & (1 << 5)) {
+            comm_start(COMMAND_FLASH_WRITE_TIMEOUT, 3);
+            comm_send_byte(read_1);
+            comm_send_byte(read_2);
+            comm_send_byte(read_3);
+            LED_RED_OFF;
+            return;
+          }
         } else {
-           // error
-           comm_start(COMMAND_FLASH_WRITE_ERROR, 1);
-           comm_send_byte(res);
-           LED_RED_OFF;
-           return;
+          read_1 = read_prg_byte((address-1) | 0x8000);
+          read_2 = read_prg_byte((address-1) | 0x8000);
+          if (read_1 == read_2 && read_2 == *(data-1))
+            break; // ok
         }
       }
     }
@@ -725,7 +739,7 @@ int main (void)
           comm_start(COMMAND_RESET_ACK, 0);
           break;
           
-        case COMMAND_COOLBOY_ERASE_REQUEST:
+        case COMMAND_COOLBOY_ERASE_SECTOR_REQUEST:
           erase_coolboy_sector();
           break;
 
