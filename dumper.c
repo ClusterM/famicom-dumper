@@ -93,7 +93,7 @@ static unsigned char read_prg_byte(unsigned int address)
   PRG_READ;  
   set_address(address);
   PHI2_HI;
-  set_romsel(address); // set /ROMSEL high if need
+  set_romsel(address); // set /ROMSEL low if need
   _delay_us(1);
   uint8_t result = PIND;
   ROMSEL_HI;
