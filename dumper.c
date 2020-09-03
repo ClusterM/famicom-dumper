@@ -94,7 +94,7 @@ static unsigned char read_prg_byte(unsigned int address)
   set_address(address);
   PHI2_HI;
   set_romsel(address); // set /ROMSEL low if need
-  _delay_us(1);
+  //_delay_us(1);
   uint8_t result = PIND;
   ROMSEL_HI;
   return result;
@@ -125,7 +125,7 @@ static unsigned char read_coolboy_byte(unsigned int address)
   ROMSEL_LOW;
   COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
   COOLBOY_PORT &= ~(1<<COOLBOY_RD_PIN);
-  _delay_us(1);
+  //_delay_us(1);
   uint8_t result = PIND;
   ROMSEL_HI;
   COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
@@ -240,19 +240,19 @@ static void write_prg_byte(unsigned int address, uint8_t data)
   PRG_WRITE;
   PORTD = data;
   set_address(address); // PHI2 low, ROMSEL always HIGH
-  _delay_us(1);
+  //_delay_us(1);
   
   PHI2_HI;
   set_romsel(address); // ROMSEL is low if need, PHI2 high  
   
-  _delay_us(1); // WRITING
+  //_delay_us(1); // WRITING
   
   // PHI2 low, ROMSEL high
   PHI2_LOW;
   ROMSEL_HI;
   
   // Back to read mode
-  _delay_us(1);
+  //_delay_us(1);
   PRG_READ;
   MODE_READ;
   set_address(0);
@@ -323,9 +323,9 @@ static void write_coolboy_flash_command(unsigned int address, uint8_t data)
   PORTD = data;
   PHI2_HI;
   ROMSEL_LOW;
-  _delay_us(1);  
+  //_delay_us(1);  
   COOLBOY_PORT &= ~(1<<COOLBOY_WR_PIN);  
-  _delay_us(1);
+  //_delay_us(1);
   COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
   set_address(0);
   ROMSEL_HI;
