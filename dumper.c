@@ -343,13 +343,13 @@ static void erase_coolboy_sector()
   write_coolboy_flash_command(0x0555, 0x55);
   write_coolboy_flash_command(0x0000, 0x30);
   
-  long int timeout = 0;
   uint8_t res;
   int16_t last_res = -1;
+  TCNT1 = 0;
+  // waiting for result
   while (1)
   {
-    timeout++;
-    if (timeout >= 1000000)
+    if (TCNT1 >= 23437) // 3 seconds
     {
       // timeout
       comm_start(COMMAND_FLASH_ERASE_TIMEOUT, 0);
@@ -389,13 +389,13 @@ static void erase_flash_sector()
   write_prg_flash_command(0x0555, 0x55);
   write_prg_flash_command(0x0000, 0x30);
   
-  long int timeout = 0;
   uint8_t res;
   int16_t last_res = -1;
+  TCNT1 = 0;
+  // waiting for result
   while (1)
   {
-    timeout++;
-    if (timeout >= 1000000)
+    if (TCNT1 >= 23437) // 3 seconds
     {
       // timeout
       comm_start(COMMAND_FLASH_ERASE_TIMEOUT, 0);
@@ -463,12 +463,11 @@ static void write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
     
       write_coolboy_flash_command(0x0000, 0x29);
 
-      long int timeout = 0;
+      TCNT1 = 0;
       // waiting for result
       while (1)
       {
-        timeout++;
-        if (timeout >= 100000)
+        if (TCNT1 >= 7812) // 1 second
         {
           // timeout
           comm_start(COMMAND_FLASH_WRITE_TIMEOUT, 0);
@@ -551,12 +550,11 @@ static void write_flash(unsigned int address, unsigned int len, uint8_t* data)
     
       write_prg_flash_command(0x0000, 0x29);
 
-      long int timeout = 0;
+      TCNT1 = 0;
       // waiting for result
       while (1)
       {
-        timeout++;
-        if (timeout >= 100000)
+        if (TCNT1 >= 7812) // 1 second
         {
           // timeout
           comm_start(COMMAND_FLASH_WRITE_TIMEOUT, 0);
@@ -667,8 +665,9 @@ int main (void)
   
   while (1)
   {
+    // PWM for leds
     TCCR1A |= (1<<COM1C1) | (1<<COM1B1) | (1<<WGM10);
-    TCCR1B |= (1<<CS10);
+    TCCR1B = 1<<CS10; // no prescaler
     if (t++ >= 10000)
     {
       if (!led_down)
@@ -696,7 +695,9 @@ int main (void)
     {
       comm_recv_done = 0;
       t = led_down = led_bright = 0;
+      // Just timer without PWM for timeouts
       TCCR1A = OCR1B = OCR1C = 0;
+      TCCR1B = (1<<CS12) | (1<<CS10); // /1024 prescaler
       
       switch (comm_recv_command)
       {
