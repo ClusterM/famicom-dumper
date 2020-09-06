@@ -63,7 +63,7 @@ ISR(USART0_RX_vect)
 static void set_address(unsigned int address)
 {
   unsigned char l = address & 0xFF;
-  unsigned char h = address>>8;
+  unsigned char h = (address >> 8) & 0xFF;
   
   PORTA = l;
   PORTC = h;
@@ -178,12 +178,20 @@ static void read_prg_crc_send(unsigned int address, unsigned int len)
 {
   LED_GREEN_ON;
   uint16_t crc = 0;
+  MODE_READ;
+  PRG_READ;  
+  PHI2_HI;
+  set_romsel(address); // set /ROMSEL low if need
   while (len > 0)
   {
-    crc = crc16_update(crc, read_prg_byte(address));
+    PORTA = address & 0xFF;
+    PORTC = (address >> 8) & 0xFF;
+    _delay_us(1);
+    crc = crc16_update(crc, PIND);
     len--;
     address++;
   }
+  ROMSEL_HI;
   set_address(0);
   comm_start(COMMAND_PRG_READ_RESULT, 2);
   comm_send_byte(crc & 0xFF);
