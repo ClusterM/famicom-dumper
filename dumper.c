@@ -60,7 +60,7 @@ ISR(USART0_RX_vect)
   }
 }
 
-static void set_address(unsigned int address)
+static void set_address(uint16_t address)
 {
   unsigned char l = address & 0xFF;
   unsigned char h = (address >> 8) & 0xFF;
@@ -75,7 +75,7 @@ static void set_address(unsigned int address)
     PORTF |= 1<<4;
 }
 
-static void set_romsel(unsigned int address)
+static void set_romsel(uint16_t address)
 {
   if (address & 0x8000)
   {
@@ -85,7 +85,7 @@ static void set_romsel(unsigned int address)
   }
 }
 
-static unsigned char read_prg_byte(unsigned int address)
+static unsigned char read_prg_byte(uint16_t address)
 {
   PHI2_LOW;
   ROMSEL_HI;
@@ -100,7 +100,7 @@ static unsigned char read_prg_byte(unsigned int address)
   return result;
 }
 
-static unsigned char read_chr_byte(unsigned int address)
+static unsigned char read_chr_byte(uint16_t address)
 {
   PHI2_LOW;
   ROMSEL_HI;
@@ -114,7 +114,7 @@ static unsigned char read_chr_byte(unsigned int address)
   return result;
 }
 
-static unsigned char read_coolboy_byte(unsigned int address)
+static unsigned char read_coolboy_byte(uint16_t address)
 {
   PHI2_LOW;
   ROMSEL_HI;
@@ -132,7 +132,7 @@ static unsigned char read_coolboy_byte(unsigned int address)
   return result;
 }
 
-static void read_prg_send(unsigned int address, unsigned int len)
+static void read_prg_send(uint16_t address, uint16_t len)
 {
   LED_GREEN_ON;
   comm_start(COMMAND_PRG_READ_RESULT, len);
@@ -146,7 +146,7 @@ static void read_prg_send(unsigned int address, unsigned int len)
   LED_GREEN_OFF;
 }
 
-static void read_chr_send(unsigned int address, unsigned int len)
+static void read_chr_send(uint16_t address, uint16_t len)
 {
   LED_GREEN_ON;
   comm_start(COMMAND_CHR_READ_RESULT, len);
@@ -174,7 +174,7 @@ static uint16_t crc16_update(uint16_t crc, uint8_t a)
   return crc;
 }
 
-static void read_prg_crc_send(unsigned int address, unsigned int len)
+static void read_prg_crc_send(uint16_t address, uint16_t len)
 {
   LED_GREEN_ON;
   uint16_t crc = 0;
@@ -199,7 +199,7 @@ static void read_prg_crc_send(unsigned int address, unsigned int len)
   LED_GREEN_OFF;
 }
 
-static void read_chr_crc_send(unsigned int address, unsigned int len)
+static void read_chr_crc_send(uint16_t address, uint16_t len)
 {
   LED_GREEN_ON;
   uint16_t crc = 0;
@@ -216,7 +216,7 @@ static void read_chr_crc_send(unsigned int address, unsigned int len)
   LED_GREEN_OFF;
 }
 
-static void read_coolboy_send(unsigned int address, unsigned int len)
+static void read_coolboy_send(uint16_t address, uint16_t len)
 {
   LED_GREEN_ON;
   COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
@@ -240,7 +240,7 @@ static void read_coolboy_send(unsigned int address, unsigned int len)
   LED_GREEN_OFF;
 }
 
-static void write_prg_byte(unsigned int address, uint8_t data)
+static void write_prg_byte(uint16_t address, uint8_t data)
 {
   PHI2_LOW;
   ROMSEL_HI;
@@ -269,7 +269,7 @@ static void write_prg_byte(unsigned int address, uint8_t data)
   PHI2_HI;
 }
 
-static void write_chr_byte(unsigned int address, uint8_t data)
+static void write_chr_byte(uint16_t address, uint8_t data)
 {
   PHI2_LOW;
   ROMSEL_HI;
@@ -287,7 +287,7 @@ static void write_chr_byte(unsigned int address, uint8_t data)
   PHI2_HI;
 }
 
-static void write_prg(unsigned int address, unsigned int len, uint8_t* data)
+static void write_prg(uint16_t address, uint16_t len, uint8_t* data)
 {
   LED_RED_ON;
   while (len > 0)
@@ -300,7 +300,7 @@ static void write_prg(unsigned int address, unsigned int len, uint8_t* data)
   LED_RED_OFF;
 }
 
-static void write_chr(unsigned int address, unsigned int len, uint8_t* data)
+static void write_chr(uint16_t address, uint16_t len, uint8_t* data)
 {
   LED_RED_ON;
   while (len > 0)
@@ -313,12 +313,12 @@ static void write_chr(unsigned int address, unsigned int len, uint8_t* data)
   LED_RED_OFF;
 }
 
-static void write_prg_flash_command(unsigned int address, uint8_t data)
+static void write_prg_flash_command(uint16_t address, uint8_t data)
 {
   write_prg_byte(address | 0x8000, data);
 }
 
-static void write_coolboy_flash_command(unsigned int address, uint8_t data)
+static void write_coolboy_flash_command(uint16_t address, uint8_t data)
 {
   COOLBOY_DDR |= 1<<COOLBOY_RD_PIN;
   COOLBOY_DDR |= 1<<COOLBOY_WR_PIN;
@@ -432,15 +432,17 @@ static void erase_flash_sector()
   LED_RED_OFF;
 }
 
-static void write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
+static void write_coolboy(uint16_t address, uint16_t len, uint8_t* data)
 {
   LED_RED_ON;
   while (len > 0)
   {
     uint8_t count = 0;
     uint8_t* d = data;
-    unsigned int a = address;
-    unsigned int address_base = a & 0xFFE0;
+    uint16_t a = address;
+    uint16_t last_address;
+    uint8_t last_data;
+    uint16_t address_base = a & 0xFFE0;
     while ((len > 0) && ((a & 0xFFE0) == address_base))
     {
       if (*d != 0xFF)
@@ -463,6 +465,8 @@ static void write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
         if (*data != 0xFF)
         {
           write_coolboy_flash_command(address, *data);
+          last_address = address;
+          last_data = *data;
           count--;
         }
         address++;
@@ -482,9 +486,9 @@ static void write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
           LED_RED_OFF;
           return;
         }
-        uint8_t read_1 = read_coolboy_byte((address-1) | 0x8000);
-        uint8_t read_2 = read_coolboy_byte((address-1) | 0x8000);
-        uint8_t read_3 = read_coolboy_byte((address-1) | 0x8000);
+        uint8_t read_1 = read_coolboy_byte(last_address | 0x8000);
+        uint8_t read_2 = read_coolboy_byte(last_address | 0x8000);
+        uint8_t read_3 = read_coolboy_byte(last_address | 0x8000);
         if (((read_1 ^ read_2) & (1 << 6)) && ((read_2 ^ read_3) & (1 << 6)))
         {
           if (read_1 & (1 << 1))
@@ -504,9 +508,9 @@ static void write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
             return;
           }
         } else {
-          read_1 = read_coolboy_byte((address-1) | 0x8000);
-          read_2 = read_coolboy_byte((address-1) | 0x8000);
-          if (read_1 == read_2 && read_2 == *(data-1))
+          read_1 = read_coolboy_byte(last_address | 0x8000);
+          read_2 = read_coolboy_byte(last_address | 0x8000);
+          if (read_1 == read_2 && read_2 == last_data)
             break; // ok
         }
       }
@@ -519,15 +523,17 @@ static void write_coolboy(unsigned int address, unsigned int len, uint8_t* data)
   LED_RED_OFF;
 }
 
-static void write_flash(unsigned int address, unsigned int len, uint8_t* data)
+static void write_flash(uint16_t address, uint16_t len, uint8_t* data)
 {
   LED_RED_ON;
   while (len > 0)
   {
     uint8_t count = 0;
     uint8_t* d = data;
-    unsigned int a = address;
-    unsigned int address_base = a & 0xFFE0;
+    uint16_t a = address;
+    uint16_t last_address;
+    uint8_t last_data;
+    uint16_t address_base = a & 0xFFE0;
     while ((len > 0) && ((a & 0xFFE0) == address_base))
     {
       if (*d != 0xFF)
@@ -550,6 +556,8 @@ static void write_flash(unsigned int address, unsigned int len, uint8_t* data)
         if (*data != 0xFF)
         {
           write_prg_flash_command(address, *data);
+          last_address = address;
+          last_data = *data;
           count--;
         }
         address++;
@@ -569,9 +577,9 @@ static void write_flash(unsigned int address, unsigned int len, uint8_t* data)
           LED_RED_OFF;
           return;
         }
-        uint8_t read_1 = read_prg_byte((address-1) | 0x8000);
-        uint8_t read_2 = read_prg_byte((address-1) | 0x8000);
-        uint8_t read_3 = read_prg_byte((address-1) | 0x8000);
+        uint8_t read_1 = read_prg_byte(last_address | 0x8000);
+        uint8_t read_2 = read_prg_byte(last_address | 0x8000);
+        uint8_t read_3 = read_prg_byte(last_address | 0x8000);
         if (((read_1 ^ read_2) & (1 << 6)) && ((read_2 ^ read_3) & (1 << 6)))
         {
           if (read_1 & (1 << 1))
@@ -591,9 +599,9 @@ static void write_flash(unsigned int address, unsigned int len, uint8_t* data)
             return;
           }
         } else {
-          read_1 = read_prg_byte((address-1) | 0x8000);
-          read_2 = read_prg_byte((address-1) | 0x8000);
-          if (read_1 == read_2 && read_2 == *(data-1))
+          read_1 = read_prg_byte(last_address | 0x8000);
+          read_2 = read_prg_byte(last_address | 0x8000);
+          if (read_1 == read_2 && read_2 == last_data)
             break; // ok
         }
       }
