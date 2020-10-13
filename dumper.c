@@ -442,8 +442,8 @@ static void write_coolboy(uint16_t address, uint16_t len, uint8_t* data)
     uint16_t a = address;
     uint16_t last_address;
     uint8_t last_data;
-    uint16_t address_base = a & 0xFFE0;
-    while ((len > 0) && ((a & 0xFFE0) == address_base))
+    uint16_t address_base = a & 0xFFC0;
+    while ((len > 0) && ((a & 0xFFC0) == address_base))
     {
       if (*d != 0xFF)
         count++;
@@ -533,8 +533,8 @@ static void write_flash(uint16_t address, uint16_t len, uint8_t* data)
     uint16_t a = address;
     uint16_t last_address;
     uint8_t last_data;
-    uint16_t address_base = a & 0xFFE0;
-    while ((len > 0) && ((a & 0xFFE0) == address_base))
+    uint16_t address_base = a & 0xFFC0;
+    while ((len > 0) && ((a & 0xFFC0) == address_base))
     {
       if (*d != 0xFF)
         count++;
