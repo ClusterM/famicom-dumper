@@ -25,7 +25,7 @@ You need:
 * ATMEGA64
 * FT232RL
 * 60-pin edge socket
-* Printed circuit board, you can order one using files it "board" or "board2" folders.
+* Printed circuit board, you can order one using files in "board" or "board2" folders.
 * Some capacitors
 * Maybe some leds
 
