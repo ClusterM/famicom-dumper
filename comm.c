@@ -3,6 +3,7 @@
 #include <util/delay.h>
 #include "comm.h"
 #include "usart.h"
+#include "crc.h"
 
 static uint8_t comm_send_crc;
 static unsigned int comm_send_length;
@@ -17,35 +18,9 @@ volatile unsigned int comm_recv_length;
 volatile uint8_t recv_buffer[RECV_BUFFER+8];
 volatile uint8_t comm_recv_done;
 
-static void comm_calc_send_crc(uint8_t inbyte)
-{
-  uint8_t j;
-  for (j=0;j<8;j++) 
-  {
-		uint8_t mix = (comm_send_crc ^ inbyte) & 0x01;
-		comm_send_crc >>= 1;
-		if (mix) 
-			comm_send_crc ^= 0x8C;                  
-		inbyte >>= 1;
-  }
-}
-
-static void comm_calc_recv_crc(uint8_t inbyte)
-{
-  uint8_t j;
-  for (j=0;j<8;j++) 
-  {
-		uint8_t mix = (comm_recv_crc ^ inbyte) & 0x01;
-		comm_recv_crc >>= 1;
-		if (mix) 
-			comm_recv_crc ^= 0x8C;                  
-		inbyte >>= 1;
-  }
-}
-
 static void comm_send_and_calc(uint8_t data)
 {
-	comm_calc_send_crc(data);
+	comm_send_crc = calc_crc8(comm_send_crc, data);
 	USART_TransmitByte(data);
 #ifdef SEND_DELAY
 	_delay_us(SEND_DELAY);
@@ -84,7 +59,7 @@ void comm_proceed(uint8_t data)
 		comm_recv_crc = 0;
 		comm_recv_done = 0;
 	}
-	comm_calc_recv_crc(data);
+	comm_recv_crc= calc_crc8(comm_recv_crc, data);
 	unsigned int l = comm_recv_pos-4;
 	switch (comm_recv_pos)
 	{
