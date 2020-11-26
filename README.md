@@ -1,9 +1,9 @@
-# Famicom Dumper/Programmer
+# Famicom Dumper/Writer
 
 
 ## Overview
 
-This is simple dumper/programmer for Famicom cartridges.
+This is simple dumper/writer for Famicom cartridges.
 
 ![Dumper](images/dumper.jpg)
 
