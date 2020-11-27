@@ -59,6 +59,6 @@ void comm_send_byte(uint8_t data);
 void comm_proceed(uint8_t data);
 
 extern volatile uint8_t comm_recv_command;
-extern volatile unsigned int comm_recv_length;
-extern volatile uint8_t recv_buffer[RECV_BUFFER+8];
+extern volatile uint16_t comm_recv_length;
+extern volatile uint8_t recv_buffer[RECV_BUFFER_SIZE];
 extern volatile uint8_t comm_recv_done;

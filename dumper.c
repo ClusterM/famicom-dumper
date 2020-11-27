@@ -913,10 +913,10 @@ int main (void)
         case COMMAND_PRG_INIT:
           comm_start(COMMAND_PRG_STARTED, 5);
           comm_send_byte(PROTOCOL_VERSION);
-          comm_send_byte(SEND_BUFFER & 0xFF);
-          comm_send_byte((SEND_BUFFER >> 8) & 0xFF);
-          comm_send_byte(RECV_BUFFER & 0xFF);
-          comm_send_byte((RECV_BUFFER >> 8) & 0xFF);
+          comm_send_byte((SEND_BUFFER_SIZE - 4) & 0xFF);
+          comm_send_byte(((SEND_BUFFER_SIZE - 4) >> 8) & 0xFF);
+          comm_send_byte((RECV_BUFFER_SIZE - 4) & 0xFF);
+          comm_send_byte(((RECV_BUFFER_SIZE - 4) >> 8) & 0xFF);
           break;
           
         case COMMAND_PRG_READ_REQUEST:

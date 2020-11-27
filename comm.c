@@ -5,17 +5,16 @@
 #include "usart.h"
 #include "crc.h"
 
-static uint8_t comm_send_crc;
-static unsigned int comm_send_length;
-static unsigned int comm_send_pos;
+static uint8_t comm_send_crc;     // CRC of outgoing packet with header
+static uint16_t comm_send_length; // size of outgoing data
+static uint16_t comm_send_pos;    // how many data sent by app
 
-static int comm_recv_pos;
+volatile uint8_t recv_buffer[RECV_BUFFER_SIZE];
+static uint16_t comm_recv_pos;    // how many bytes of packet received
 static uint8_t comm_recv_crc;
 static uint8_t comm_recv_error;
-
 volatile uint8_t comm_recv_command;
-volatile unsigned int comm_recv_length;
-volatile uint8_t recv_buffer[RECV_BUFFER+8];
+volatile uint16_t comm_recv_length;
 volatile uint8_t comm_recv_done;
 
 static void comm_send_and_calc(uint8_t data)
