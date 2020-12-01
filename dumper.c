@@ -642,7 +642,7 @@ static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uin
     if (!read_fds_block_send(56, (current_block >= block_read_start) && block_read_count, &crc_ok, &end_of_head, 0, FDS_READ_GAP_BEFORE_FIRST_BLOCK))
       return;
   }
-  if (block_read_count)
+  if ((current_block >= block_read_start) && block_read_count)
     block_read_count--;
   current_block++;
 
@@ -662,7 +662,7 @@ static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uin
       if (!read_fds_block_send(2, (current_block >= block_read_start) && block_read_count, &crc_ok, &end_of_head, 0, FDS_READ_GAP_BETWEEN_BLOCKS))
         return;
     }
-    if (block_read_count)
+    if ((current_block >= block_read_start) && block_read_count)
       block_read_count--;
     current_block++;
   }
@@ -684,7 +684,7 @@ static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uin
       if (!read_fds_block_send(16, (current_block >= block_read_start) && block_read_count, &crc_ok, &end_of_head, &file_size, FDS_READ_GAP_BETWEEN_BLOCKS))
         return;
     }
-    if (block_read_count)
+    if ((current_block >= block_read_start) && block_read_count)
       block_read_count--;
     current_block++;
 
@@ -704,7 +704,7 @@ static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uin
         if (!read_fds_block_send(file_size + 1, (current_block >= block_read_start) && block_read_count, &crc_ok, &end_of_head, 0, FDS_READ_GAP_BETWEEN_BLOCKS))
           return;
       }
-      if (block_read_count)
+      if ((current_block >= block_read_start) && block_read_count)
         block_read_count--;
       current_block++;
     }
