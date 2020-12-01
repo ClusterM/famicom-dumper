@@ -76,13 +76,37 @@ static void set_address(uint16_t address)
     PORTF |= 1<<4;
 }
 
-static void set_romsel(uint16_t address)
+static inline void set_romsel(uint16_t address)
 {
   if (address & 0x8000)
   {
     ROMSEL_LOW;
   } else {
     ROMSEL_HI;
+  }
+}
+
+static inline void set_coolboy_rd(uint16_t address)
+{
+  if (address & 0x8000)
+  {
+    COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
+    COOLBOY_PORT &= ~(1<<COOLBOY_RD_PIN);
+  } else {
+    COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
+    COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
+  }
+}
+
+static inline void set_coolboy_wr(uint16_t address)
+{
+  if (address & 0x8000)
+  {
+    COOLBOY_PORT &= ~(1<<COOLBOY_WR_PIN);
+    COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
+  } else {
+    COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
+    COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
   }
 }
 
@@ -95,9 +119,11 @@ static unsigned char read_prg_byte(uint16_t address)
   set_address(address);
   PHI2_HI;
   set_romsel(address); // set /ROMSEL low if need
+  set_coolboy_rd(address); // COOLBOY's /oe low if need
   _delay_us(1);
   uint8_t result = PIND;
   ROMSEL_HI;
+  set_coolboy_rd(0);
   return result;
 }
 
@@ -112,24 +138,6 @@ static unsigned char read_chr_byte(uint16_t address)
   uint8_t result = PIND;
   CHR_READ_HI;
   PHI2_HI;
-  return result;
-}
-
-static unsigned char read_coolboy_byte(uint16_t address)
-{
-  PHI2_LOW;
-  ROMSEL_HI;
-  MODE_READ;
-  PRG_READ;  
-  set_address(address);
-  PHI2_HI;
-  ROMSEL_LOW;
-  COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
-  COOLBOY_PORT &= ~(1<<COOLBOY_RD_PIN);
-  _delay_us(1);
-  uint8_t result = PIND;
-  ROMSEL_HI;
-  COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
   return result;
 }
 
@@ -203,30 +211,6 @@ static void read_chr_crc_send(uint16_t address, uint16_t len)
   LED_GREEN_OFF;
 }
 
-static void read_coolboy_send(uint16_t address, uint16_t len)
-{
-  LED_GREEN_ON;
-  COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
-  COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
-  COOLBOY_DDR |= 1<<COOLBOY_RD_PIN;
-  COOLBOY_DDR |= 1<<COOLBOY_WR_PIN;
-  comm_start(COMMAND_PRG_READ_RESULT, len);
-  while (len > 0)
-  {
-    comm_send_byte(read_coolboy_byte(address));
-    len--;
-    address++;
-  }
-  set_address(0);
-  ROMSEL_HI;
-  COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
-  COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
-  
-  COOLBOY_DDR &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
-  COOLBOY_PORT &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
-  LED_GREEN_OFF;
-}
-
 static void write_prg_byte(uint16_t address, uint8_t data)
 {
   PHI2_LOW;
@@ -239,12 +223,14 @@ static void write_prg_byte(uint16_t address, uint8_t data)
   
   PHI2_HI;
   set_romsel(address); // ROMSEL is low if need, PHI2 high  
+  set_coolboy_wr(address); // COOLBOY's /we is low if need
   
   _delay_us(1); // WRITING
   
   // PHI2 low, ROMSEL high
   PHI2_LOW;
   ROMSEL_HI;
+  set_coolboy_wr(0);
   
   // Back to read mode
   _delay_us(1);
@@ -300,77 +286,9 @@ static void write_chr(uint16_t address, uint16_t len, uint8_t* data)
   LED_RED_OFF;
 }
 
-static void write_prg_flash_command(uint16_t address, uint8_t data)
+static inline void write_prg_flash_command(uint16_t address, uint8_t data)
 {
   write_prg_byte(address | 0x8000, data);
-}
-
-static void write_coolboy_flash_command(uint16_t address, uint8_t data)
-{
-  COOLBOY_DDR |= 1<<COOLBOY_RD_PIN;
-  COOLBOY_DDR |= 1<<COOLBOY_WR_PIN;
-  COOLBOY_PORT |= 1<<COOLBOY_RD_PIN;
-  COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
-  ROMSEL_HI;
-  PRG_READ;  
-  set_address(address);
-  MODE_WRITE;
-  PORTD = data;
-  PHI2_HI;
-  ROMSEL_LOW;
-  _delay_us(1);  
-  COOLBOY_PORT &= ~(1<<COOLBOY_WR_PIN);  
-  _delay_us(1);
-  COOLBOY_PORT |= 1<<COOLBOY_WR_PIN;
-  set_address(0);
-  ROMSEL_HI;
-  MODE_READ;
-}
-
-static void erase_coolboy_sector()
-{
-  LED_RED_ON;
-  write_coolboy_flash_command(0x0000, 0xF0);
-  write_coolboy_flash_command(0x0AAA, 0xAA);
-  write_coolboy_flash_command(0x0555, 0x55);
-  write_coolboy_flash_command(0x0AAA, 0x80);
-  write_coolboy_flash_command(0x0AAA, 0xAA);
-  write_coolboy_flash_command(0x0555, 0x55);
-  write_coolboy_flash_command(0x0000, 0x30);
-  
-  uint8_t res;
-  int16_t last_res = -1;
-  TCNT1 = 0;
-  // waiting for result
-  while (1)
-  {
-    if (TCNT1 >= 23437) // 3 seconds
-    {
-      // timeout
-      comm_start(COMMAND_FLASH_ERASE_TIMEOUT, 0);
-      break;
-    }
-    res = read_coolboy_byte(0x8000);
-    if ((last_res == -1) || ((res ^ (last_res & 0xFF)) & ((1 << 6) | (1 << 2))))
-    {
-      // in progress
-      last_res = res;
-      continue;
-    }
-    // done
-    if (res == 0xFF)
-    {
-       // ok
-       comm_start(COMMAND_PRG_WRITE_DONE, 0);
-       break;
-    } else {
-       // error
-       comm_start(COMMAND_FLASH_ERASE_ERROR, 1);
-       comm_send_byte(res);
-       break;
-    }
-  }
-  LED_RED_OFF;
 }
 
 static void erase_flash_sector()
@@ -416,97 +334,6 @@ static void erase_flash_sector()
        break;
     }
   }
-  LED_RED_OFF;
-}
-
-static void write_coolboy(uint16_t address, uint16_t len, uint8_t* data)
-{
-  LED_RED_ON;
-  while (len > 0)
-  {
-    uint8_t count = 0;
-    uint8_t* d = data;
-    uint16_t a = address;
-    uint16_t last_address;
-    uint8_t last_data;
-    uint16_t address_base = a & 0xFFC0;
-    while ((len > 0) && ((a & 0xFFC0) == address_base))
-    {
-      if (*d != 0xFF)
-        count++;
-      a++;
-      len--;
-      d++;
-    }
-
-    if (count)
-    {
-      write_coolboy_flash_command(0x0000, 0xF0);
-      write_coolboy_flash_command(0x0AAA, 0xAA);
-      write_coolboy_flash_command(0x0555, 0x55);
-      write_coolboy_flash_command(0x0000, 0x25);
-      write_coolboy_flash_command(0x0000, count-1);
-
-      while (count > 0)
-      {
-        if (*data != 0xFF)
-        {
-          write_coolboy_flash_command(address, *data);
-          last_address = address;
-          last_data = *data;
-          count--;
-        }
-        address++;
-        data++;
-      }
-    
-      write_coolboy_flash_command(0x0000, 0x29);
-
-      TCNT1 = 0;
-      // waiting for result
-      while (1)
-      {
-        if (TCNT1 >= 7812) // 1 second
-        {
-          // timeout
-          comm_start(COMMAND_FLASH_WRITE_TIMEOUT, 0);
-          LED_RED_OFF;
-          return;
-        }
-        uint8_t read_1 = read_coolboy_byte(last_address | 0x8000);
-        uint8_t read_2 = read_coolboy_byte(last_address | 0x8000);
-        uint8_t read_3 = read_coolboy_byte(last_address | 0x8000);
-        if (((read_1 ^ read_2) & (1 << 6)) && ((read_2 ^ read_3) & (1 << 6)))
-        {
-          if (read_1 & (1 << 1))
-          {
-            comm_start(COMMAND_FLASH_WRITE_ERROR, 3);
-            comm_send_byte(read_1);
-            comm_send_byte(read_2);
-            comm_send_byte(read_3);
-            LED_RED_OFF;
-            return;
-          } else if (read_1 & (1 << 5)) {
-            comm_start(COMMAND_FLASH_WRITE_TIMEOUT, 3);
-            comm_send_byte(read_1);
-            comm_send_byte(read_2);
-            comm_send_byte(read_3);
-            LED_RED_OFF;
-            return;
-          }
-        } else {
-          read_1 = read_coolboy_byte(last_address | 0x8000);
-          read_2 = read_coolboy_byte(last_address | 0x8000);
-          if (read_1 == read_2 && read_2 == last_data)
-            break; // ok
-        }
-      }
-    }
-
-    address = a;
-    data = d;
-  }
-  comm_start(COMMAND_PRG_WRITE_DONE, 0);
   LED_RED_OFF;
 }
 
@@ -837,6 +664,8 @@ static void init_ports()
   set_address(0);
   DDRA = 0xFF; // Address low  
   DDRC = 0xFF; // Address high
+  COOLBOY_DDR |= (1<<COOLBOY_RD_PIN) | (1<<COOLBOY_WR_PIN);
+  COOLBOY_PORT |= (1<<COOLBOY_RD_PIN) | (1<<COOLBOY_WR_PIN);
 }
 
 static void reset_phi2()
@@ -856,8 +685,6 @@ int main (void)
   sei();
   USART_init();
   init_ports();
-  COOLBOY_DDR &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
-  COOLBOY_PORT &= ~((1<<COOLBOY_RD_PIN) | (1<<COOLBOY_RD_PIN));
 
   LED_RED_OFF;
   LED_GREEN_OFF;  
@@ -919,6 +746,7 @@ int main (void)
           comm_send_byte(((RECV_BUFFER_SIZE - 4) >> 8) & 0xFF);
           break;
           
+        case COMMAND_COOLBOY_READ_REQUEST:
         case COMMAND_PRG_READ_REQUEST:
           address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
           length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
@@ -938,32 +766,18 @@ int main (void)
           comm_start(COMMAND_PRG_WRITE_DONE, 0);
           break;
 
-        case COMMAND_COOLBOY_READ_REQUEST:
-          address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
-          length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
-          read_coolboy_send(address, length);
-          break;
-
         case COMMAND_RESET:
           reset_phi2();
           comm_start(COMMAND_RESET_ACK, 0);
           break;
           
-        case COMMAND_COOLBOY_ERASE_SECTOR_REQUEST:
-          erase_coolboy_sector();
-          break;
-
-        case COMMAND_COOLBOY_WRITE_REQUEST:
-          address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
-          length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
-          write_coolboy(address, length, (uint8_t*)&recv_buffer[4]);
-          break;
-          
         case COMMAND_FLASH_ERASE_SECTOR_REQUEST:
+        case COMMAND_COOLBOY_ERASE_SECTOR_REQUEST:
           erase_flash_sector();
           break;
 
         case COMMAND_FLASH_WRITE_REQUEST:
+        case COMMAND_COOLBOY_WRITE_REQUEST:
           address = recv_buffer[0] | ((uint16_t)recv_buffer[1]<<8);
           length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
           write_flash(address, length, (uint8_t*)&recv_buffer[4]);
@@ -990,10 +804,6 @@ int main (void)
           length = recv_buffer[2] | ((uint16_t)recv_buffer[3]<<8);
           write_chr(address, length, (uint8_t*)&recv_buffer[4]);
           comm_start(COMMAND_CHR_WRITE_DONE, 0);
-          break;
-
-        case COMMAND_FDS_READ_REQUEST:
-          read_fds_send(recv_buffer[0], recv_buffer[1]);
           break;
 
         case COMMAND_MIRRORING_REQUEST:
