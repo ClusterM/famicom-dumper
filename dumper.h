@@ -53,6 +53,7 @@
 #define CHR_WRITE_HI PORTF |= (1<<2)
 #define CHR_WRITE_LOW PORTF &= ~(1<<2)
 
-#define DELAY_CLOCK(t) {if (t < 30000) _delay_us(t * 1000000 / 1789773); else _delay_ms(t * 1000 / 1789773);}
+#define DELAY_CLOCK(t) _delay_us(t * 1000000 / 1789773)
+#define DELAY_KILO_CLOCK(t) _delay_ms(t * 1000000 / 1789773)
 
 #endif

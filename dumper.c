@@ -424,14 +424,6 @@ static void write_flash(uint16_t address, uint16_t len, uint8_t* data)
   LED_RED_OFF;
 }
 
-static inline void delay_clock(t)
-{
-  if (t < 30000) 
-    _delay_us(t * 1000000 / 1789773); 
-  else 
-    _delay_ms(t * 1000 / 1789773);
-}
-
 static uint8_t transfer_fds_byte(uint8_t *output, uint8_t input, uint8_t *end_of_head)
 {
   TCNT1 = 0;
@@ -474,7 +466,10 @@ static uint8_t read_fds_block_send(uint16_t length, uint8_t send, uint8_t *crc_o
   uint32_t b;
 
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // motor on without transfer
-  delay_clock(gap_delay);
+  if (gap_delay < 30000)
+    DELAY_CLOCK(gap_delay);
+  else
+    DELAY_KILO_CLOCK(gap_delay / 1000);
   if (send)
   {
     LED_GREEN_ON;
@@ -520,7 +515,10 @@ static uint8_t write_fds_block(uint8_t *data, uint16_t length, uint32_t gap_dela
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // motor on without transfer
   read_prg_byte(FDS_DRIVE_STATUS); // check if disk is inserted
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_WRITE | FDS_CONTROL_MOTOR_ON); // enable writing without transfer
-  delay_clock(gap_delay);
+  if (gap_delay < 30000)
+    DELAY_CLOCK(gap_delay);
+  else
+    DELAY_KILO_CLOCK(gap_delay / 1000);
   write_prg_byte(FDS_DATA_WRITE, 0x00); // write $00
   // start transfer, enable IRQ
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_WRITE | FDS_CONTROL_MOTOR_ON | FDS_CONTROL_TRANSFER_ON | FDS_CONTROL_IRQ_ON);
@@ -555,7 +553,7 @@ static uint8_t write_fds_block(uint8_t *data, uint16_t length, uint32_t gap_dela
     return 0;
   }
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_WRITE | FDS_CONTROL_MOTOR_ON | FDS_CONTROL_TRANSFER_ON | FDS_CONTROL_IRQ_ON | FDS_CONTROL_CRC);  // enable CRC control
-  delay_clock(FDS_WRITE_CRC_DELAY);
+  DELAY_CLOCK(FDS_WRITE_CRC_DELAY);
   TCNT1 = 0;
   while (1)
   {
@@ -604,9 +602,9 @@ static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uin
     comm_start(COMMAND_FDS_DISK_NOT_INSERTED, 0);
     return;
   }
-  delay_clock(916500); // ~916500 cycles
+  DELAY_KILO_CLOCK(916500 / 1000); // ~916500 cycles
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // monor on, unreset
-  delay_clock(268500); // ~268500 cycles
+  DELAY_KILO_CLOCK(268500 / 1000); // ~268500 cycles
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // monor on, unreset
   // waiting until drive is rewinded
