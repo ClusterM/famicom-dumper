@@ -33,6 +33,7 @@
 #include "crc.h"
 
 static void (*jump_to_bootloader)(void) = (void*)0xF800;
+uint16_t flash_buffer_mask = 0xFFC0;
 
 ISR(USART0_RX_vect)
 {
@@ -42,6 +43,18 @@ ISR(USART0_RX_vect)
     b = UDR0;
     comm_proceed(b);
   }
+}
+
+static void set_flash_buffer_size(uint16_t value)
+{
+  // Set maximum number of bytes in multi-byte program
+  uint8_t bit_value = 0;
+  while (value > 1)
+  {
+    value >>= 1;
+    bit_value++;
+  }
+  flash_buffer_mask = 0xFFFF << bit_value;
 }
 
 static void set_address(uint16_t address)
@@ -330,8 +343,8 @@ static void write_flash(uint16_t address, uint16_t len, uint8_t* data)
     uint16_t a = address;
     uint16_t last_address;
     uint8_t last_data;
-    uint16_t address_base = a & 0xFFC0;
-    while ((len > 0) && ((a & 0xFFC0) == address_base))
+    uint16_t address_base = a & flash_buffer_mask;
+    while ((len > 0) && ((a & flash_buffer_mask) == address_base))
     {
       if (*d != 0xFF)
         count++;
@@ -895,6 +908,11 @@ int main (void)
           get_mirroring();
           break;
           
+        case COMMAND_SET_FLASH_BUFFER_SIZE:
+          set_flash_buffer_size(recv_buffer[0] | ((uint16_t) recv_buffer[1] << 8));
+          comm_start(COMMAND_SET_VALUE_DONE, 0);
+          break;
+
         case COMMAND_BOOTLOADER:
           cli();
           MCUCSR = 0;
