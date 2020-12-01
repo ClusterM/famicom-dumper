@@ -32,23 +32,6 @@
 #include "dumper.h"
 #include "crc.h"
 
-#define LED_RED_ON PORTB |= (1<<7)
-#define LED_RED_OFF PORTB &= ~(1<<7)
-#define LED_GREEN_ON PORTB |= (1<<6)
-#define LED_GREEN_OFF PORTB &= ~(1<<6)
-#define ROMSEL_HI PORTF |= (1<<1)
-#define ROMSEL_LOW PORTF &= ~(1<<1)
-#define PHI2_HI PORTF |= (1<<0)
-#define PHI2_LOW PORTF &= ~(1<<0)
-#define MODE_READ { PORTD = 0xFF; DDRD = 0; }
-#define MODE_WRITE DDRD = 0xFF
-#define PRG_READ PORTF |= (1<<7)
-#define PRG_WRITE PORTF &= ~(1<<7)
-#define CHR_READ_HI PORTF |= (1<<5)
-#define CHR_READ_LOW PORTF &= ~(1<<5)
-#define CHR_WRITE_HI PORTF |= (1<<2)
-#define CHR_WRITE_LOW PORTF &= ~(1<<2)
-
 static void (*jump_to_bootloader)(void) = (void*)0xF800;
 
 ISR(USART0_RX_vect)
@@ -428,213 +411,306 @@ static void write_flash(uint16_t address, uint16_t len, uint8_t* data)
   LED_RED_OFF;
 }
 
-static void read_fds_send(uint8_t start_block, uint8_t block_count)
+static inline void delay_clock(t)
 {
+  if (t < 30000) 
+    _delay_us(t * 1000000 / 1789773); 
+  else 
+    _delay_ms(t * 1000 / 1789773);
+}
+
+static uint8_t transfer_fds_byte(uint8_t *output, uint8_t input, uint8_t *end_of_head)
+{
+  TCNT1 = 0;
+  while (!IRQ_FIRED)
+  {
+    // waiting for interrupt
+    // timeout 5 secs
+    if (TCNT1 >= 39060)
+    {
+      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+      comm_start(COMMAND_FDS_TIMEOUT, 0);
+      return 0;
+    }
+  }
+  if (output)
+    *output = read_prg_byte(FDS_DATA_READ);
+  write_prg_byte(FDS_DATA_WRITE, input); // clear interrupt
+  uint8_t status = read_prg_byte(FDS_DISK_STATUS);
+  if (end_of_head)
+    *end_of_head |= (status >> 6) & 1;
+  TCNT1 = 0;
+  while (IRQ_FIRED)
+  {
+    // is interrupt flag cleared?
+    // timeout 5 secs
+    if (TCNT1 >= 39060)
+    {
+      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+      comm_start(COMMAND_FDS_TIMEOUT, 0);
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static uint8_t read_fds_block_send(uint16_t length, uint8_t send, uint8_t *crc_ok, uint8_t *end_of_head, uint16_t *file_size, uint32_t gap_delay)
+{
+  uint8_t data;
   uint8_t status;
+  uint32_t b;
+
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // motor on without transfer
+  delay_clock(gap_delay);
+  if (send)
+  {
+    LED_GREEN_ON;
+    comm_start(COMMAND_FDS_READ_RESULT_BLOCK, length + 2);
+  }
+  // start transfer, enable IRQ
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON | FDS_CONTROL_TRANSFER_ON | FDS_CONTROL_IRQ_ON);
+  for (b = 0; b < length; b++)
+  {
+    if (!transfer_fds_byte(&data, 0, end_of_head))
+      return 0;
+    if (file_size)
+    {
+      if (b == 13)
+        *file_size |= data;
+      else if (b == 14)
+        *file_size |= data << 8;
+    }
+    if (send)
+      comm_send_byte(data);
+  }
+  if (!transfer_fds_byte(0, 0, end_of_head))
+    return 0;
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON | FDS_CONTROL_TRANSFER_ON | FDS_CONTROL_IRQ_ON | FDS_CONTROL_CRC); // enable CRC control
+  if (!transfer_fds_byte(0, 0, end_of_head))
+    return 0;
+  status = read_prg_byte(FDS_DISK_STATUS);
+  *crc_ok &= ((status >> 4) & 1) ^ 1;
+  *end_of_head |= (status >> 6) & 1;
+  if (send)
+  {
+    comm_send_byte(*crc_ok); // CRC check result
+    comm_send_byte(*end_of_head); // end of head meet?
+  }
+  LED_GREEN_OFF;
+  return 1; // success
+}
+
+static uint8_t write_fds_block(uint8_t *data, uint16_t length, uint32_t gap_delay)
+{
+  uint8_t end_of_head = 0;
+  LED_RED_ON;
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // motor on without transfer
+  read_prg_byte(FDS_DRIVE_STATUS); // check if disk is inserted
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_WRITE | FDS_CONTROL_MOTOR_ON); // enable writing without transfer
+  delay_clock(gap_delay);
+  write_prg_byte(FDS_DATA_WRITE, 0x00); // write $00
+  // start transfer, enable IRQ
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_WRITE | FDS_CONTROL_MOTOR_ON | FDS_CONTROL_TRANSFER_ON | FDS_CONTROL_IRQ_ON);
+  transfer_fds_byte(0, 0x80, &end_of_head);  // write $80
+  while (length)
+  {
+    if (end_of_head)
+    {
+      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+      comm_start(COMMAND_FDS_END_OF_HEAD, 0);
+      return 0;
+    }
+    if (!transfer_fds_byte(0, *data, &end_of_head))
+    {
+      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+      comm_start(COMMAND_FDS_TIMEOUT, 0);
+      return 0;
+    }
+    data++;
+    length--;
+  }
+  if (!transfer_fds_byte(0, 0xFF, &end_of_head))
+  {
+    write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+    comm_start(COMMAND_FDS_TIMEOUT, 0);
+    return 0;
+  }
+  if (end_of_head)
+  {
+    write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+    comm_start(COMMAND_FDS_END_OF_HEAD, 0);
+    return 0;
+  }
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_WRITE | FDS_CONTROL_MOTOR_ON | FDS_CONTROL_TRANSFER_ON | FDS_CONTROL_IRQ_ON | FDS_CONTROL_CRC);  // enable CRC control
+  delay_clock(FDS_WRITE_CRC_DELAY);
+  TCNT1 = 0;
+  while (1)
+  {
+    uint8_t status = read_prg_byte(FDS_DRIVE_STATUS);
+    if (!(status & 2))
+      break; // ready
+    // timeout 1 sec
+    if (TCNT1 >= 7812)
+    {
+      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+      comm_start(COMMAND_FDS_TIMEOUT, 0);
+      return 0;
+    }
+  }  
+  LED_RED_OFF;
+  return 1;
+}
+
+static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uint8_t block_write_count, uint8_t *block_write_ids, uint16_t *write_lengths,
+    uint8_t *write_data)
+{
+  uint8_t crc_ok = 1;
   uint8_t end_of_head = 0;
   uint8_t current_block = 0;
-  uint16_t b;
+  uint8_t current_writing_block = 0;
 
-  write_prg_byte(0x4022, 0x00); // disable IRQ
-  write_prg_byte(0x4023, 0x00); // disable registers
-  write_prg_byte(0x4023, 0x01); // enable disk registers
-  write_prg_byte(0x4025, 0x2E); // reset
-  // waiting for disk
-  while (1)
+  write_prg_byte(FDS_IRQ_CONTROL, 0x00); // disable timer IRQ
+  write_prg_byte(FDS_MASTER_IO, 0x01); // enable disk registers
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset
+  uint8_t ram_adapter_connected = 1;
+  write_prg_byte(FDS_EXT_WRITE, 0x00); // Ext. connector
+  write_prg_byte(0x0000, 0xFF); // To prevent open bus read
+  if ((read_prg_byte(FDS_EXT_READ) & 0x7F) != 0x00)
+    ram_adapter_connected = 0;
+  write_prg_byte(FDS_EXT_WRITE, 0xFF); // Ext. connector
+  write_prg_byte(0x0000, 0x00); // To prevent open bus read
+  if ((read_prg_byte(FDS_EXT_READ) & 0x7F) != 0x7F)
+    ram_adapter_connected = 0;
+  if (!ram_adapter_connected)
   {
-     status = read_prg_byte(0x4032);
-     if (!(status & 1)) break; // disk inserted
+    comm_start(COMMAND_FDS_NOT_CONNECTED, 0);
+    return;
   }
-  write_prg_byte(0x4025, 0x2E); // reset
-  _delay_ms(800); // 916522 cycles
-  write_prg_byte(0x4025, 0x2F); // start motor
-  write_prg_byte(0x4025, 0x2D); // unreset
-
-  _delay_ms(250); // 268531 cycles
-  write_prg_byte(0x4025, 0x2E); // reset
-  write_prg_byte(0x4025, 0x2F); // start motor
-  write_prg_byte(0x4025, 0x2D); // unreset
-
+  if (read_prg_byte(FDS_DRIVE_STATUS) & 1)
+  {
+    comm_start(COMMAND_FDS_DISK_NOT_INSERTED, 0);
+    return;
+  }
+  delay_clock(916500); // ~916500 cycles
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // monor on, unreset
+  delay_clock(268500); // ~268500 cycles
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // monor on, unreset
   // waiting until drive is rewinded
-  while (1)
+  TCNT1 = 0;
+  uint8_t secs = 0;
+  do
   {
-     status = read_prg_byte(0x4032);
-     if (!(status & 2)) break; // ready
-  }
+    // timeout 15 secs
+    if (TCNT1 >= 7812)
+    {
+      TCNT1 = 0;
+      secs++;
+      if (secs >= 15)
+      {
+        write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+        comm_start(COMMAND_FDS_TIMEOUT, 0);
+        return;
+      }
+    }
+  } while (read_prg_byte(FDS_DRIVE_STATUS) & 2);
 
-  _delay_ms(FDS_PAUSE_BEFORE_FIRST_BLOCK); // 486974 cycles
-
-  LED_GREEN_ON;
-  if (start_block == 0)
-    comm_start(COMMAND_FDS_READ_RESULT_BLOCK, 58);
-  write_prg_byte(0x4025, 0x6D); // start transfer
-  write_prg_byte(0x4025, 0xED); // enable IRQ
-  for (b = 0; b < 56; b++)
+  // disk info block
+  if (block_write_count && (current_block == block_write_ids[current_writing_block]))
   {
-    while (!IRQ_FIRED); // waiting for interrupt
-    uint8_t data = read_prg_byte(0x4031);
-    //write_prg_byte(0x4024, 0xFF); // clear interrupt
-    // status read also clears interrupt
-    status = read_prg_byte(0x4030);
-    end_of_head |= (status >> 6) & 1;
-    if (start_block == 0)
-      comm_send_byte(data);
-    while (IRQ_FIRED); // is interrupt flag cleared?
-  }
-  write_prg_byte(0x4025, 0xED); // enable CRC control
-  while (!IRQ_FIRED); // waiting for interrupt
-  read_prg_byte(0x4031);
-  write_prg_byte(0x4024, 0xFF); // clear interrupt
-  while (IRQ_FIRED); // is interrupt flag cleared?
-  status = read_prg_byte(0x4030);
-  end_of_head |= (status >> 6) & 1;
-  if (start_block == 0)
+    // gap delay while writing = ~28300 bits = (~28300 / 8)bits * ~165cycles = ~583687.5
+    uint16_t write_length = write_lengths[current_writing_block];
+    if (!write_fds_block(write_data, write_length, FDS_WRITE_GAP_BEFORE_FIRST_BLOCK))
+      return;
+    write_data += write_length;
+    current_writing_block++;
+    block_write_count--;
+  } else
   {
-    comm_send_byte(((status >> 4) & 1) ^ 1); // CRC check result
-    comm_send_byte(end_of_head); // end of head meet?
+    // gap delay while reading = ~486974 cycles
+    if (!read_fds_block_send(56, (current_block >= block_read_start) && block_read_count, &crc_ok, &end_of_head, 0, FDS_READ_GAP_BEFORE_FIRST_BLOCK))
+      return;
   }
+  if (block_read_count)
+    block_read_count--;
   current_block++;
-  
-  // reading file amount block
-  if (!end_of_head && ((start_block + block_count > current_block) || (block_count = 0)))
+
+  if (crc_ok && !end_of_head && (block_read_count || block_write_count))
   {
-    write_prg_byte(0x4025, 0x2D); // motor on without transfer
-    // waiting until drive is ready
-    while (1)
+    // file amount block
+    if (block_write_count && (current_block == block_write_ids[current_writing_block]))
     {
-      status = read_prg_byte(0x4032);
-      if (!(status & 2)) break; // ready
-    }
-    _delay_ms(FDS_PAUSE_BETWEEN_BLOCKS); // 9026 cycles
-    if ((current_block >= start_block) && ((current_block < start_block + block_count) || (block_count == 0)))
-      comm_start(COMMAND_FDS_READ_RESULT_BLOCK, 4);
-    write_prg_byte(0x4025, 0x6D); // start transfer
-    write_prg_byte(0x4025, 0xED); // enable IRQ
-    for (b = 0; b < 2; b++)
+      uint16_t write_length = write_lengths[current_writing_block];
+      if (!write_fds_block(write_data, write_length, FDS_WRITE_GAP_BETWEEN_BLOCKS))
+        return;
+      write_data += write_length;
+      current_writing_block++;
+      block_write_count--;
+    } else
     {
-      while (!IRQ_FIRED); // waiting for interrupt
-      uint8_t data = read_prg_byte(0x4031);
-      //write_prg_byte(0x4024, 0xFF); // clear interrupt
-      // status read also clears interrupt
-      status = read_prg_byte(0x4030);
-      end_of_head |= (status >> 6) & 1;
-      if ((current_block >= start_block) && ((current_block < start_block + block_count) || (block_count == 0)))
-        comm_send_byte(data);
-      while (IRQ_FIRED); // is interrupt flag cleared?
+      if (!read_fds_block_send(2, (current_block >= block_read_start) && block_read_count, &crc_ok, &end_of_head, 0, FDS_READ_GAP_BETWEEN_BLOCKS))
+        return;
     }
-    write_prg_byte(0x4025, 0xED); // enable CRC control
-    while (!IRQ_FIRED); // waiting for interrupt
-    read_prg_byte(0x4031);
-    write_prg_byte(0x4024, 0xFF); // clear interrupt
-    while (IRQ_FIRED); // is interrupt flag cleared?
-    status = read_prg_byte(0x4030);
-    end_of_head |= (status >> 6) & 1;
-    if ((current_block >= start_block) && ((current_block < start_block + block_count) || (block_count == 0)))
-    {
-      comm_send_byte(((status >> 4) & 1) ^ 1); // CRC check result
-      comm_send_byte(end_of_head); // end of head meet?
-    }
-    current_block++;    
+    if (block_read_count)
+      block_read_count--;
+    current_block++;
   }
 
-  while (!end_of_head && ((start_block + block_count > current_block) || (block_count = 0)))
+  while (crc_ok && !end_of_head && (block_read_count || block_write_count))
   {
-    // reading file header block
+    // file header block
     uint16_t file_size = 0; // size of the next file
+    if (block_write_count && (current_block == block_write_ids[current_writing_block]))
+    {
+      uint16_t write_length = write_lengths[current_writing_block];
+      if (!write_fds_block(write_data, write_length, FDS_WRITE_GAP_BETWEEN_BLOCKS))
+        return;
+      write_data += write_length;
+      current_writing_block++;
+      block_write_count--;
+    } else
+    {
+      if (!read_fds_block_send(16, (current_block >= block_read_start) && block_read_count, &crc_ok, &end_of_head, &file_size, FDS_READ_GAP_BETWEEN_BLOCKS))
+        return;
+    }
+    if (block_read_count)
+      block_read_count--;
+    current_block++;
 
-    write_prg_byte(0x4025, 0x2D); // motor on without transfer
-    // waiting until drive is ready
-    while (1)
+    if (crc_ok && !end_of_head && (block_read_count || block_write_count))
     {
-      status = read_prg_byte(0x4032);
-      if (!(status & 2)) break; // ready
-    }
-    _delay_ms(FDS_PAUSE_BETWEEN_BLOCKS); // 9026 cycles
-    if ((current_block >= start_block) && ((current_block < start_block + block_count) || (block_count == 0)))
-      comm_start(COMMAND_FDS_READ_RESULT_BLOCK, 18);
-    write_prg_byte(0x4025, 0x6D); // start transfer
-    write_prg_byte(0x4025, 0xED); // enable IRQ
-    for (b = 0; b < 16; b++)
-    {
-      while (!IRQ_FIRED); // waiting for interrupt
-      uint8_t data = read_prg_byte(0x4031);
-      //write_prg_byte(0x4024, 0xFF); // clear interrupt
-      // status read also clears interrupt
-      status = read_prg_byte(0x4030);
-      end_of_head |= (status >> 6) & 1;
-      if ((current_block >= start_block) && ((current_block < start_block + block_count) || (block_count == 0)))
-        comm_send_byte(data);
-      if (b == 13)
-        file_size |= data;
-      else if (b == 14)
-        file_size |= data << 8;
-      while (IRQ_FIRED); // is interrupt flag cleared?
-    }
-    write_prg_byte(0x4025, 0xED); // enable CRC control
-    while (!IRQ_FIRED); // waiting for interrupt
-    read_prg_byte(0x4031);
-    write_prg_byte(0x4024, 0xFF); // clear interrupt
-    while (IRQ_FIRED); // is interrupt flag cleared?
-    status = read_prg_byte(0x4030);
-    end_of_head |= (status >> 6) & 1;
-    if ((current_block >= start_block) && ((current_block < start_block + block_count) || (block_count == 0)))
-    {
-      comm_send_byte(((status >> 4) & 1) ^ 1); // CRC check result
-      comm_send_byte(end_of_head); // end of head meet?
-    }
-    current_block++;    
-
-    // reading file data
-    if (!end_of_head && ((start_block + block_count > current_block) || (block_count = 0)))
-    {
-      write_prg_byte(0x4025, 0x2D); // motor on without transfer
-      // waiting until drive is ready
-      while (1)
+      // file data block
+      if (block_write_count && (current_block == block_write_ids[current_writing_block]))
       {
-        status = read_prg_byte(0x4032);
-        if (!(status & 2)) break; // ready
-      }
-      _delay_ms(FDS_PAUSE_BETWEEN_BLOCKS); // 9026 cycles
-      if ((current_block >= start_block) && ((current_block < start_block + block_count) || (block_count == 0)))
-        comm_start(COMMAND_FDS_READ_RESULT_BLOCK, file_size + 3);
-      write_prg_byte(0x4025, 0x6D); // start transfer
-      write_prg_byte(0x4025, 0xED); // enable IRQ
-      for (b = 0; b < file_size + 1; b++)
+        uint16_t write_length = write_lengths[current_writing_block];
+        if (!write_fds_block(write_data, write_length, FDS_WRITE_GAP_BETWEEN_BLOCKS))
+          return;
+        write_data += write_length;
+        current_writing_block++;
+        block_write_count--;
+      } else
       {
-        while (!IRQ_FIRED); // waiting for interrupt
-        uint8_t data = read_prg_byte(0x4031);
-        //write_prg_byte(0x4024, 0xFF); // clear interrupt
-        // status read also clears interrupt
-        status = read_prg_byte(0x4030);
-        end_of_head |= (status >> 6) & 1;
-        if ((current_block >= start_block) && ((current_block < start_block + block_count) || (block_count == 0)))
-          comm_send_byte(data);
-        while (IRQ_FIRED); // is interrupt flag cleared?
+        if (!read_fds_block_send(file_size + 1, (current_block >= block_read_start) && block_read_count, &crc_ok, &end_of_head, 0, FDS_READ_GAP_BETWEEN_BLOCKS))
+          return;
       }
-      write_prg_byte(0x4025, 0xED); // enable CRC control
-      while (!IRQ_FIRED); // waiting for interrupt
-      read_prg_byte(0x4031);
-      write_prg_byte(0x4024, 0xFF); // clear interrupt
-      while (IRQ_FIRED); // is interrupt flag cleared?
-      status = read_prg_byte(0x4030);
-      end_of_head |= (status >> 6) & 1;
-      if ((current_block >= start_block) && ((current_block < start_block + block_count) || (block_count == 0)))
-      {
-        comm_send_byte(((status >> 4) & 1) ^ 1); // CRC check result
-        comm_send_byte(end_of_head); // end of head meet?
-      }
+      if (block_read_count)
+        block_read_count--;
       current_block++;
     }
   }
 
-  write_prg_byte(0x4025, 0x26); // reset, stop
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
 
   _delay_ms(50);
+  if (current_writing_block && !block_write_count && !block_read_count)
+  {
+    comm_start(COMMAND_FDS_WRITE_DONE, 0);
+    return;
+  }
   comm_start(COMMAND_FDS_READ_RESULT_END, 0);
-  LED_GREEN_OFF;
 }
 
-void get_mirroring()
+static void get_mirroring()
 {
   comm_start(COMMAND_MIRRORING_RESULT, 4);
   LED_GREEN_ON;
@@ -806,6 +882,15 @@ int main (void)
           comm_start(COMMAND_CHR_WRITE_DONE, 0);
           break;
 
+        case COMMAND_FDS_READ_REQUEST:
+          fds_transfer(recv_buffer[0], recv_buffer[1], 0, 0, 0, 0);
+          break;
+
+        case COMMAND_FDS_WRITE_REQUEST:
+          fds_transfer(0, 0, recv_buffer[0], (uint8_t*) &recv_buffer[1], (uint16_t*) &recv_buffer[1 + recv_buffer[0]],
+            (uint8_t*) &recv_buffer[1 + recv_buffer[0] + recv_buffer[0] * 2]);
+          break;        
+        
         case COMMAND_MIRRORING_REQUEST:
           get_mirroring();
           break;
@@ -815,6 +900,9 @@ int main (void)
           MCUCSR = 0;
           jump_to_bootloader();
       }
+
+      LED_GREEN_OFF;
+      LED_RED_OFF;
     }    
   }
 }
