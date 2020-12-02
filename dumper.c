@@ -433,7 +433,7 @@ static uint8_t transfer_fds_byte(uint8_t *output, uint8_t input, uint8_t *end_of
     // timeout 5 secs
     if (TCNT1 >= 39060)
     {
-      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset, stop
       comm_start(COMMAND_FDS_TIMEOUT, 0);
       return 0;
     }
@@ -451,7 +451,7 @@ static uint8_t transfer_fds_byte(uint8_t *output, uint8_t input, uint8_t *end_of
     // timeout 5 secs
     if (TCNT1 >= 39060)
     {
-      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset, stop
       comm_start(COMMAND_FDS_TIMEOUT, 0);
       return 0;
     }
@@ -527,13 +527,13 @@ static uint8_t write_fds_block(uint8_t *data, uint16_t length, uint32_t gap_dela
   {
     if (end_of_head)
     {
-      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset, stop
       comm_start(COMMAND_FDS_END_OF_HEAD, 0);
       return 0;
     }
     if (!transfer_fds_byte(0, *data, &end_of_head))
     {
-      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset, stop
       comm_start(COMMAND_FDS_TIMEOUT, 0);
       return 0;
     }
@@ -542,13 +542,13 @@ static uint8_t write_fds_block(uint8_t *data, uint16_t length, uint32_t gap_dela
   }
   if (!transfer_fds_byte(0, 0xFF, &end_of_head))
   {
-    write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+    write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset, stop
     comm_start(COMMAND_FDS_TIMEOUT, 0);
     return 0;
   }
   if (end_of_head)
   {
-    write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+    write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset, stop
     comm_start(COMMAND_FDS_END_OF_HEAD, 0);
     return 0;
   }
@@ -563,7 +563,7 @@ static uint8_t write_fds_block(uint8_t *data, uint16_t length, uint32_t gap_dela
     // timeout 1 sec
     if (TCNT1 >= 7812)
     {
-      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+      write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset, stop
       comm_start(COMMAND_FDS_TIMEOUT, 0);
       return 0;
     }
@@ -582,7 +582,7 @@ static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uin
 
   write_prg_byte(FDS_IRQ_CONTROL, 0x00); // disable timer IRQ
   write_prg_byte(FDS_MASTER_IO, 0x01); // enable disk registers
-  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset
   uint8_t ram_adapter_connected = 1;
   write_prg_byte(FDS_EXT_WRITE, 0x00); // Ext. connector
   write_prg_byte(0x0000, 0xFF); // To prevent open bus read
@@ -604,12 +604,12 @@ static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uin
   }  
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // monor on, unreset
   DELAY_KILO_CLOCK(268500 / 1000); // ~268500 cycles
-  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // monor on, unreset
   if ((read_prg_byte(FDS_EXT_READ) & 0x80) == 0)
   {
     // battery low
-    write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+    write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset, stop
     comm_start(COMMAND_FDS_BATTERY_LOW, 0);
     return;
   }
@@ -625,7 +625,24 @@ static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uin
       secs++;
       if (secs >= 15)
       {
-        write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+        write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset, stop
+        comm_start(COMMAND_FDS_TIMEOUT, 0);
+        return;
+      }
+    }
+  } while (!(read_prg_byte(FDS_DRIVE_STATUS) & 2));
+  TCNT1 = 0;
+  secs = 0;
+  do
+  {
+    // timeout 15 secs
+    if (TCNT1 >= 7812)
+    {
+      TCNT1 = 0;
+      secs++;
+      if (secs >= 15)
+      {
+        write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset, stop
         comm_start(COMMAND_FDS_TIMEOUT, 0);
         return;
       }
@@ -716,7 +733,7 @@ static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uin
     }
   }
 
-  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset, stop
 
   _delay_ms(50);
   if (current_writing_block && !block_write_count && !block_read_count)
