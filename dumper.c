@@ -601,12 +601,18 @@ static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uin
   {
     comm_start(COMMAND_FDS_DISK_NOT_INSERTED, 0);
     return;
-  }
-  DELAY_KILO_CLOCK(916500 / 1000); // ~916500 cycles
+  }  
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // monor on, unreset
   DELAY_KILO_CLOCK(268500 / 1000); // ~268500 cycles
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // monor on, unreset
+  if ((read_prg_byte(FDS_EXT_READ) & 0x80) == 0)
+  {
+    // battery low
+    write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_RESET); // reset, stop
+    comm_start(COMMAND_FDS_BATTERY_LOW, 0);
+    return;
+  }
   // waiting until drive is rewinded
   TCNT1 = 0;
   uint8_t secs = 0;
