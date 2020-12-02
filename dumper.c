@@ -602,10 +602,9 @@ static void fds_transfer(uint8_t block_read_start, uint8_t block_read_count, uin
     comm_start(COMMAND_FDS_DISK_NOT_INSERTED, 0);
     return;
   }  
+  // battery test
   write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // monor on, unreset
-  DELAY_KILO_CLOCK(268500 / 1000); // ~268500 cycles
-  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_MOTOR_OFF); // reset
-  write_prg_byte(FDS_CONTROL, FDS_CONTROL_READ | FDS_CONTROL_MOTOR_ON); // monor on, unreset
+  _delay_ms(100);
   if ((read_prg_byte(FDS_EXT_READ) & 0x80) == 0)
   {
     // battery low
