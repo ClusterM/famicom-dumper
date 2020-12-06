@@ -51,61 +51,70 @@ void comm_send_byte(uint8_t data)
 
 void comm_proceed(uint8_t data)
 {
-	if (comm_recv_error && data != 'F') return;
-	comm_recv_error = 0;
-	if (!comm_recv_pos)
-	{
-		comm_recv_crc = 0;
-		comm_recv_done = 0;
-	}
-	comm_recv_crc= calc_crc8(comm_recv_crc, data);
-	unsigned int l = comm_recv_pos-4;
-	switch (comm_recv_pos)
-	{
-		case 0:
-			if (data != 'F')
-			{
-				comm_recv_error = 1;
-				comm_start(COMMAND_ERROR_INVALID, 0);
-			}
-			break;
-		case 1:
-			comm_recv_command = data;
-			break;
-		case 2:
-			comm_recv_length = data;
-			break;
-		case 3:
-			comm_recv_length |= (uint16_t)data << 8;
-			break;
-		default:
-			if (l >= sizeof(recv_buffer))
-			{
-				comm_recv_pos = 0;
-				comm_recv_error = 1;
-				comm_start(COMMAND_ERROR_OVERFLOW, 0);
-				return;
-			}			
-			else if (l < comm_recv_length)
-			{
-				recv_buffer[l] = data;				
-			} else if (l == comm_recv_length)
-			{
-				if (!comm_recv_crc)
-				{
-					comm_recv_done = 1;
-				} 
-				else
-				{
-					comm_recv_error = 1;
-					comm_start(COMMAND_ERROR_CRC, 0);
-				}
-				comm_recv_pos = 0;
-				return;
-			}
-			break;
-	}
-	comm_recv_pos++;
+  if (comm_recv_error && data != 'F')
+    return;
+  comm_recv_error = 0;
+  if (!comm_recv_pos)
+  {
+    comm_recv_crc = 0;
+    comm_recv_done = 0;
+  }
+  comm_recv_crc = calc_crc8(comm_recv_crc, data);
+  switch (comm_recv_pos)
+  {
+  case 0:
+    {
+      if (data != 'F')
+      {
+        comm_recv_error = 1;
+        comm_start(COMMAND_ERROR_INVALID, 0);
+      }
+    }
+    break;
+  case 1:
+    {
+      comm_recv_command = data;
+    }
+    break;
+  case 2:
+    {
+      comm_recv_length = data;
+    }
+    break;
+  case 3:
+    {
+      comm_recv_length |= (uint16_t) data << 8;
+    }
+    break;
+  default:
+    {
+      uint16_t pos = comm_recv_pos - 4;
+      if (pos >= sizeof(recv_buffer))
+      {
+        comm_recv_pos = 0;
+        comm_recv_error = 1;
+        comm_start(COMMAND_ERROR_OVERFLOW, 0);
+        return;
+      } else if (pos < comm_recv_length)
+      {
+        recv_buffer[pos] = data;
+      } else if (pos == comm_recv_length)
+      {
+        if (!comm_recv_crc)
+        {
+          comm_recv_done = 1;
+        } else
+        {
+          comm_recv_error = 1;
+          comm_start(COMMAND_ERROR_CRC, 0);
+        }
+        comm_recv_pos = 0;
+        return;
+      }
+    }
+    break;
+  }
+  comm_recv_pos++;
 }
 
 void comm_init()
