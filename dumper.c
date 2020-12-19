@@ -338,7 +338,7 @@ static void write_flash(uint16_t address, uint16_t len, uint8_t* data)
   LED_RED_ON;
   while (len > 0)
   {
-    uint8_t count = 0;
+    uint16_t count = 0;
     uint8_t* d = data;
     uint16_t a = address;
     uint16_t last_address;
