@@ -1,5 +1,7 @@
 # Famicom Dumper/Writer
 
+WARNING! This project is deprecated. It's highly recommended to use new project: https://github.com/ClusterM/famicom-dumper-writer
+
 
 ## Overview
 
